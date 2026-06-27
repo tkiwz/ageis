@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Offline · AEGIS</title>
+<style>
+  html, body { margin:0; height:100%; background:#0a0f1c; color:#e6f1ff; font-family: system-ui, sans-serif; }
+  .wrap { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; text-align:center; }
+  .badge { display:inline-block; padding:4px 10px; border:1px solid #00d4d8; color:#00d4d8; border-radius:999px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:16px; }
+  h1 { font-size:24px; margin:0 0 8px; }
+  p { color:#94a3b8; margin: 8px 0; max-width:30ch; line-height:1.5; }
+  .btn { margin-top:24px; padding:12px 24px; background:#00d4d8; color:#0a0f1c; border:0; border-radius:8px; font-weight:600; cursor:pointer; }
+  .ar { font-size:13px; color:#64748b; direction: rtl; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="badge">AEGIS · Offline</div>
+  <h1>You are offline</h1>
+  <p>Your last actions are saved locally and will sync when you reconnect.</p>
+  <p class="ar">آخر إجراءاتك محفوظة محلياً وستُرفع عند الاتصال.</p>
+  <button class="btn" onclick="location.reload()">Try again</button>
+</div>
+</body>
+</html>

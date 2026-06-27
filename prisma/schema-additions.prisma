@@ -1,0 +1,111 @@
+
+// ═══════ FIELD DEVICES (Phase 5A.2) ═══════
+// Raspberry Pi vision systems + ESP32 wearable safety devices
+
+model FieldDevice {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  type            String                              // PI_VISION, ESP32_WEARABLE
+  ipAddress       String?
+  port            Int?
+  status          String   @default("OFFLINE")        // ONLINE, OFFLINE, ERROR, MAINTENANCE
+  batteryPercent  Int?
+  lastSeenAt      DateTime?
+
+  // Pi-specific
+  modelClasses    Json?
+  modelVersion    String?
+
+  // Counters
+  detectionsCount Int      @default(0)
+  alertsCount     Int      @default(0)
+
+  // Relations
+  siteId    String?
+  site      Site?   @relation(fields: [siteId], references: [id])
+  workerId  String?
+  worker    User?   @relation(fields: [workerId], references: [id])
+
+  visionDetections VisionDetection[]
+  telemetry        DeviceTelemetry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, status])
+  @@index([siteId])
+}
+
+model VisionDetection {
+  id           String   @id @default(cuid())
+  deviceId     String
+  device       FieldDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  label        String                                  // helmet, no_helmet, oil_leak, mesh_gard, etc
+  confidence   Float
+  status       String                                  // OK, WARNING, INFO
+
+  allScores    Json?
+  imageUrl     String?
+
+  // AI analysis fields
+  aiAnalyzed   Boolean  @default(false)
+  aiSeverity   String?                                 // LOW, MEDIUM, HIGH, CRITICAL
+  aiReasoning  String?
+  aiActions    Json?
+
+  alertId      String?
+
+  detectedAt   DateTime @default(now())
+
+  @@index([deviceId, detectedAt])
+  @@index([status, aiAnalyzed])
+}
+
+model DeviceTelemetry {
+  id          String   @id @default(cuid())
+  deviceId    String
+  device      FieldDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  gasLevel    Float?
+  temperature Float?
+  pressure    Float?
+  acceleration Float?
+  voltage     Float?
+  currentMa   Float?
+
+  alertActive Boolean  @default(false)
+  recordedAt  DateTime @default(now())
+
+  @@index([deviceId, recordedAt])
+}
+
+model AIDecision {
+  id          String   @id @default(cuid())
+  type        String                                   // VISION_ANALYSIS, CHAT, VIDEO_GENERATION
+  provider    String                                   // CLAUDE, GEMINI
+  modelUsed   String
+
+  inputData   Json
+  outputData  Json
+  reasoning   String?
+  confidence  Float?
+
+  tokensInput  Int?
+  tokensOutput Int?
+  durationMs   Int?
+
+  autonomous     Boolean @default(false)
+  requiresHuman  Boolean @default(false)
+
+  visionDetectionId String?
+  telemetryId       String?
+  alertId           String?
+  incidentId        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([provider])
+}

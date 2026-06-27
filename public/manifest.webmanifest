@@ -1,0 +1,45 @@
+{
+  "name": "AEGIS HSSE",
+  "short_name": "AEGIS",
+  "description": "Real-time HSSE command platform for field workers",
+  "start_url": "/m",
+  "display": "standalone",
+  "background_color": "#0a0f1c",
+  "theme_color": "#00d4d8",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "I am safe",
+      "short_name": "Safe",
+      "url": "/m/safe",
+      "description": "Quick safety check-in"
+    },
+    {
+      "name": "Report incident",
+      "short_name": "Report",
+      "url": "/m/report",
+      "description": "Quick incident report"
+    },
+    {
+      "name": "My permits",
+      "short_name": "Permits",
+      "url": "/m/permits",
+      "description": "Active work permits"
+    }
+  ]
+}

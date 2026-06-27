@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* AEGIS — Dark Command Center Theme */
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 47% 5%;
+    --foreground: 213 31% 91%;
+    --card: 222 47% 8%;
+    --card-foreground: 213 31% 91%;
+    --popover: 222 47% 8%;
+    --popover-foreground: 213 31% 91%;
+    --primary: 188 95% 56%;
+    --primary-foreground: 222 47% 5%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 213 31% 91%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 213 31% 91%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 213 31% 91%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 188 95% 56%;
+    --risk-low: 142 76% 45%;
+    --risk-medium: 38 92% 50%;
+    --risk-high: 25 95% 53%;
+    --risk-critical: 0 84% 60%;
+  }
+
+  :root:not(.dark) {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 5%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 5%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 5%;
+    --primary: 188 95% 36%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 5%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 20% 45%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 5%;
+    --destructive: 0 84% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 188 95% 36%;
+    --risk-low: 142 76% 36%;
+    --risk-medium: 38 92% 40%;
+    --risk-high: 25 95% 45%;
+    --risk-critical: 0 84% 50%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground antialiased; }
+  html { font-feature-settings: "rlig" 1, "calt" 1; }
+}
+
+@layer utilities {
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, hsl(var(--primary) / 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--primary) / 0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .glass {
+    background: hsl(var(--card) / 0.7);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+  }
+
+  .glow-low      { box-shadow: 0 0 12px hsl(var(--risk-low) / 0.4); }
+  .glow-medium   { box-shadow: 0 0 12px hsl(var(--risk-medium) / 0.4); }
+  .glow-high     { box-shadow: 0 0 12px hsl(var(--risk-high) / 0.4); }
+  .glow-critical { box-shadow: 0 0 16px hsl(var(--risk-critical) / 0.6); }
+  .glow-primary  { box-shadow: 0 0 12px hsl(var(--primary) / 0.4); }
+
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .status-online   { background: hsl(var(--risk-low)); box-shadow: 0 0 6px hsl(var(--risk-low) / 0.6); }
+  .status-warning  { background: hsl(var(--risk-medium)); box-shadow: 0 0 6px hsl(var(--risk-medium) / 0.6); }
+  .status-offline  { background: hsl(var(--risk-critical)); box-shadow: 0 0 6px hsl(var(--risk-critical) / 0.6); }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-jetbrains, ui-monospace, monospace);
+  }
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary) / 0.4); }

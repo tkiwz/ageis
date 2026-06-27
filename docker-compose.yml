@@ -1,0 +1,77 @@
+# AEGIS HSSE Platform — Production docker-compose
+#
+# Usage:
+#   1. cp .env.example .env  &&  edit secrets
+#   2. docker-compose up -d
+#   3. docker-compose exec app npx prisma migrate deploy
+#   4. open http://localhost:3000
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_dotenv}
+      POSTGRES_DB: aegis
+    volumes:
+      - aegis_db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://aegis:${POSTGRES_PASSWORD:-changeme_in_dotenv}@db:5432/aegis?schema=public
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-5-20250929}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CALLMEBOT_PHONE: ${CALLMEBOT_PHONE:-}
+      CALLMEBOT_APIKEY: ${CALLMEBOT_APIKEY:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      DEVICE_INGEST_SECRET: ${DEVICE_INGEST_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Optional: cron scheduler for retention + autonomous ticks
+  cron:
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      CRON_SECRET: ${CRON_SECRET:-}
+      TARGET_URL: http://app:3000
+    command: |
+      sh -c '
+        apk add --no-cache curl tzdata && \
+        echo "*/2 * * * * curl -fsSL -X POST -H \"x-cron-secret: $${CRON_SECRET}\" $${TARGET_URL}/api/autonomy/pipeline/tick > /dev/null 2>&1" > /etc/crontabs/root && \
+        echo "0 3 * * * curl -fsSL -X POST -H \"x-cron-secret: $${CRON_SECRET}\" $${TARGET_URL}/api/compliance/retention > /dev/null 2>&1" >> /etc/crontabs/root && \
+        crond -f -d 8
+      '
+
+volumes:
+  aegis_db:

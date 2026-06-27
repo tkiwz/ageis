@@ -1,0 +1,1161 @@
+// AEGIS HSSE Platform — Database Schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════ IDENTITY & AUDIT ═══════
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("OPERATOR")
+  department   String?
+  phone        String?
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions             Session[]
+  reportedIncidents    Incident[]            @relation("IncidentReporter")
+  assignedIncidents    Incident[]            @relation("IncidentAssignee")
+  requestedPermits     Permit[]              @relation("PermitRequester")
+  approvedPermits      Permit[]              @relation("PermitApprover")
+  assignedTasks        Task[]
+  enrollments          TrainingEnrollment[]
+  conductedInspections Inspection[]
+  riskAssessments      RiskAssessment[]
+  responsibleCompliance ComplianceItem[]
+  uploadedDocuments    Document[]
+  observations         Observation[]
+  investigations       Investigation[]
+  commandedEmergencies EmergencyEvent[]
+  auditLogs            AuditLog[]
+
+  @@index([role])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  module       String
+  action       String
+  actionType   String   @default("MANUAL")
+  isAutonomous Boolean  @default(false)
+  description  String
+  metadata     String?
+  riskLevel    String?
+  userId       String?
+  siteId       String?
+  // Tamper-evident chain — each entry's HMAC includes the previous entry's HMAC
+  prevHash     String?  // hex(sha256-hmac of previous row)
+  hash         String?  // hex(sha256-hmac of this row's fields + prevHash)
+  createdAt    DateTime @default(now())
+  user User? @relation(fields: [userId], references: [id])
+  site Site? @relation(fields: [siteId], references: [id])
+  @@index([module, createdAt])
+  @@index([isAutonomous])
+}
+
+// ═══════ SITES ═══════
+
+model Site {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  nameAr           String?
+  description      String?
+  productionType   String   @default("OIL_AND_GAS")
+  status           String   @default("ACTIVE")
+  riskLevel        String   @default("LOW")
+  latitude         Float
+  longitude        Float
+  capacity         Int      @default(0)
+  currentOccupancy Int      @default(0)
+  isLockedDown     Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  incidents         Incident[]
+  permits           Permit[]
+  devices           IoTDevice[]
+  riskAssessments   RiskAssessment[]
+  weatherReadings   WeatherReading[]
+  emissionReadings  EmissionReading[]
+  complianceItems   ComplianceItem[]
+  inspections       Inspection[]
+  tasks             Task[]
+  emergencyEvents   EmergencyEvent[]
+  documents         Document[]
+  alerts            Alert[]
+  observations      Observation[]
+  auditLogs         AuditLog[]
+  fieldDevices      FieldDevice[]
+
+  @@index([status])
+  @@index([riskLevel])
+}
+
+// ═══════ OPERATIONS ═══════
+
+model Permit {
+  id              String   @id @default(cuid())
+  permitNumber    String   @unique
+  title           String
+  type            String
+  status          String   @default("DRAFT")
+  riskLevel       String   @default("MEDIUM")
+  description     String?
+  location        String
+  validFrom       DateTime
+  validUntil      DateTime
+  isAutoApproved  Boolean  @default(false)
+  isAutoRevoked   Boolean  @default(false)
+  revocationReason String?
+  // Optional: link to the executing contractor
+  contractorId  String?
+  siteId        String
+  requesterId   String
+  approverId    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  site        Site            @relation(fields: [siteId], references: [id])
+  requester   User            @relation("PermitRequester", fields: [requesterId], references: [id])
+  approver    User?           @relation("PermitApprover", fields: [approverId], references: [id])
+  contractor  Contractor?     @relation(fields: [contractorId], references: [id])
+  conditions      PermitCondition[]
+  riskAssessments RiskAssessment[]
+  @@index([status])
+  @@index([type])
+  @@index([contractorId])
+}
+
+model PermitCondition {
+  id          String   @id @default(cuid())
+  permitId    String
+  description String
+  isMandatory Boolean  @default(true)
+  isVerified  Boolean  @default(false)
+  verifiedAt  DateTime?
+  permit Permit @relation(fields: [permitId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  category    String
+  priority    String   @default("MEDIUM")
+  status      String   @default("PENDING")
+  dueDate     DateTime?
+  completedAt DateTime?
+  isAutoAssigned Boolean @default(false)
+  siteId     String?
+  assigneeId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  site     Site? @relation(fields: [siteId], references: [id])
+  assignee User? @relation(fields: [assigneeId], references: [id])
+  @@index([status, priority])
+}
+
+model IoTDevice {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  type         String
+  status       String   @default("ONLINE")
+  location     String?
+  unit         String
+  warningHigh  Float?
+  criticalHigh Float?
+  warningLow   Float?
+  criticalLow  Float?
+  lastReadingAt DateTime?
+  siteId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  site     Site            @relation(fields: [siteId], references: [id])
+  readings SensorReading[]
+  @@index([type, status])
+}
+
+model SensorReading {
+  id         String   @id @default(cuid())
+  deviceId   String
+  value      Float
+  isAnomaly  Boolean  @default(false)
+  alertLevel String?
+  recordedAt DateTime @default(now())
+  device IoTDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  @@index([deviceId, recordedAt])
+}
+
+// ═══════ SAFETY ═══════
+
+model Incident {
+  id              String   @id @default(cuid())
+  incidentNumber  String   @unique
+  // Idempotency for autonomous creates. Manual incidents leave this null.
+  idempotencyKey  String?  @unique
+  title           String
+  description     String
+  type            String
+  severity        String   @default("LOW")
+  status          String   @default("REPORTED")
+  location        String
+  occurredAt      DateTime
+  reportedAt      DateTime @default(now())
+  resolvedAt      DateTime?
+  isAutoEscalated Boolean  @default(false)
+  aiAnalysis      String?
+  siteId       String
+  reporterId   String
+  assigneeId   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  site         Site            @relation(fields: [siteId], references: [id])
+  reporter     User            @relation("IncidentReporter", fields: [reporterId], references: [id])
+  assignee     User?           @relation("IncidentAssignee", fields: [assigneeId], references: [id])
+  actions      IncidentAction[]
+  investigation Investigation?
+  @@index([status, severity])
+}
+
+model IncidentAction {
+  id          String   @id @default(cuid())
+  incidentId  String
+  description String
+  status      String   @default("PENDING")
+  dueDate     DateTime?
+  completedAt DateTime?
+  isAutoGenerated Boolean @default(false)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model Observation {
+  id              String   @id @default(cuid())
+  recordNumber    String   @unique
+  type            String
+  status          String   @default("DRAFT")
+  location        String
+  findings        String
+  unsafeDetail    String?
+  reviewerComment String?
+  contractor      String?
+  observedAt      DateTime @default(now())
+  siteId       String
+  reportedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  site       Site @relation(fields: [siteId], references: [id])
+  reportedBy User @relation(fields: [reportedById], references: [id])
+  @@index([type, status])
+}
+
+model RiskAssessment {
+  id                String   @id @default(cuid())
+  title             String
+  type              String
+  hazardDescription String
+  riskBefore        String
+  controlsSuggested String
+  riskAfter         String
+  aiSuggested       Boolean  @default(false)
+  status            String   @default("DRAFT")
+  // Optional link to a Work Permit (PTW)
+  permitId          String?
+  siteId       String
+  conductedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  site        Site    @relation(fields: [siteId], references: [id])
+  conductedBy User    @relation(fields: [conductedById], references: [id])
+  permit      Permit? @relation(fields: [permitId], references: [id])
+  @@index([type, status])
+}
+
+model Investigation {
+  id           String   @id @default(cuid())
+  incidentId   String   @unique
+  rootCause    String?
+  summary      String?
+  status       String   @default("OPEN")
+  hasAIEvidence Boolean @default(false)
+  leadInvestigatorId String
+  incident         Incident @relation(fields: [incidentId], references: [id])
+  leadInvestigator User     @relation(fields: [leadInvestigatorId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ═══════ GOVERNANCE ═══════
+
+model ComplianceItem {
+  id                  String   @id @default(cuid())
+  title               String
+  regulationRef       String
+  status              String   @default("PENDING")
+  dueDate             DateTime
+  isAutoEscalated     Boolean  @default(false)
+  triggersLockdown    Boolean  @default(false)
+  siteId         String
+  responsibleId  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  site        Site @relation(fields: [siteId], references: [id])
+  responsible User @relation(fields: [responsibleId], references: [id])
+  @@index([status, dueDate])
+}
+
+model Contractor {
+  id              String   @id @default(cuid())
+  name            String
+  companyName     String
+  contactEmail    String
+  contactPhone    String?
+  safetyRating    Float    @default(0)
+  status          String   @default("ACTIVE")
+  isAutoSuspended Boolean  @default(false)
+  contractStart   DateTime
+  contractEnd     DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  permits   Permit[]
+  @@index([status])
+}
+
+model Inspection {
+  id          String   @id @default(cuid())
+  title       String
+  type        String
+  status      String   @default("SCHEDULED")
+  fraudDetected Boolean @default(false)
+  fraudReason String?
+  conductedAt DateTime?
+  notes       String?
+  siteId        String
+  conductedById String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  site        Site @relation(fields: [siteId], references: [id])
+  conductedBy User @relation(fields: [conductedById], references: [id])
+  @@index([status])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  title        String
+  category     String
+  status       String   @default("DRAFT")
+  fileUrl      String?
+  version      String   @default("1.0")
+  requiresAcknowledgment Boolean @default(false)
+  siteId       String?
+  uploadedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  site             Site?                  @relation(fields: [siteId], references: [id])
+  uploadedBy       User                   @relation(fields: [uploadedById], references: [id])
+  acknowledgments  DocumentAcknowledgment[]
+}
+
+model DocumentAcknowledgment {
+  id             String   @id @default(cuid())
+  documentId     String
+  userId         String
+  acknowledgedAt DateTime @default(now())
+  isAccessBlocked Boolean @default(false)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@unique([documentId, userId])
+}
+
+model Training {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  type        String
+  duration    Int
+  validityDays Int     @default(365)
+  isMandatory Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  enrollments TrainingEnrollment[]
+}
+
+model TrainingEnrollment {
+  id           String   @id @default(cuid())
+  trainingId   String
+  userId       String
+  status       String   @default("ENROLLED")
+  completedAt  DateTime?
+  expiresAt    DateTime?
+  autoEnrolled Boolean  @default(false)
+  training Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+  @@unique([trainingId, userId])
+  @@index([status, expiresAt])
+}
+
+// ═══════ INTELLIGENCE ═══════
+
+model Rule {
+  id            String   @id @default(cuid())
+  name          String
+  module        String
+  description   String?
+  severity      String   @default("MEDIUM")
+  isActive      Boolean  @default(true)
+  conditions    String
+  actions       String
+  requiresApproval Boolean @default(false)
+  triggerCount  Int      @default(0)
+  lastTriggeredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  autonomousActions AutonomousAction[]
+  @@index([module, isActive])
+}
+
+model AutonomousAction {
+  id            String   @id @default(cuid())
+  ruleId        String?
+  actionType    String
+  status        String   @default("PENDING")
+  description   String
+  metadata      String?
+  approvedById  String?
+  approvedAt    DateTime?
+  executedAt    DateTime?
+  rejectionReason String?
+  rule Rule? @relation(fields: [ruleId], references: [id])
+  createdAt DateTime @default(now())
+  @@index([status, createdAt])
+}
+
+model AIInsight {
+  id           String   @id @default(cuid())
+  insightType  String
+  module       String
+  title        String
+  content      String
+  confidence   Float    @default(0.5)
+  metadata     String?
+  isActioned   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@index([module, createdAt])
+}
+
+// ═══════ COMMUNICATION ═══════
+
+model Alert {
+  id            String   @id @default(cuid())
+  type          String
+  title         String
+  message       String
+  channels      String
+  status        String   @default("PENDING")
+  isAutonomous  Boolean  @default(false)
+  acknowledgedAt DateTime?
+  siteId   String?
+  createdAt DateTime @default(now())
+  site Site? @relation(fields: [siteId], references: [id])
+  @@index([type, createdAt])
+}
+
+model EmergencyEvent {
+  id                   String   @id @default(cuid())
+  title                String
+  type                 String
+  severity             String   @default("MEDIUM")
+  status               String   @default("ACTIVE")
+  evacuationTriggered  Boolean  @default(false)
+  droneDispatched      Boolean  @default(false)
+  startedAt            DateTime @default(now())
+  resolvedAt           DateTime?
+  siteId       String
+  commandedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  site         Site @relation(fields: [siteId], references: [id])
+  commandedBy  User @relation(fields: [commandedById], references: [id])
+  @@index([status, severity])
+}
+
+// ═══════ ENVIRONMENT ═══════
+
+model WeatherReading {
+  id            String   @id @default(cuid())
+  temperature   Float
+  humidity      Float
+  windSpeed     Float
+  windDirection String
+  condition     String
+  aqi           Int
+  alertTriggered Boolean @default(false)
+  recordedAt    DateTime @default(now())
+  siteId String
+  site   Site @relation(fields: [siteId], references: [id])
+  @@index([siteId, recordedAt])
+}
+
+model EmissionReading {
+  id              String   @id @default(cuid())
+  co2Level        Float
+  noiseLevel      Float
+  wasteGenerated  Float
+  waterUsage      Float
+  bmsAdjusted     Boolean  @default(false)
+  recordedAt      DateTime @default(now())
+  siteId String
+  site   Site @relation(fields: [siteId], references: [id])
+  @@index([siteId, recordedAt])
+}
+
+// ═══════ FIELD DEVICES (Phase 5A.2) ═══════
+// Raspberry Pi vision systems + ESP32 wearable safety devices
+
+model FieldDevice {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  type            String                              // PI_VISION, ESP32_WEARABLE
+  ipAddress       String?
+  port            Int?
+  status          String   @default("OFFLINE")        // ONLINE, OFFLINE, ERROR, MAINTENANCE
+  batteryPercent  Int?
+  lastSeenAt      DateTime?
+
+  // Pi-specific
+  modelClasses    Json?
+  modelVersion    String?
+
+  // Counters
+  detectionsCount Int      @default(0)
+  alertsCount     Int      @default(0)
+
+  // Relations
+  siteId    String?
+  site      Site?   @relation(fields: [siteId], references: [id])
+
+  visionDetections VisionDetection[]
+  telemetry        DeviceTelemetry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, status])
+  @@index([siteId])
+}
+
+model VisionDetection {
+  id           String   @id @default(cuid())
+  deviceId     String
+  device       FieldDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  label        String                                  // helmet, no_helmet, oil_leak, mesh_gard, etc
+  confidence   Float
+  status       String                                  // OK, WARNING, INFO
+
+  allScores    Json?
+  imageUrl     String?
+
+  // AI analysis fields
+  aiAnalyzed   Boolean  @default(false)
+  aiSeverity   String?                                 // LOW, MEDIUM, HIGH, CRITICAL
+  aiReasoning  String?
+  aiActions    Json?
+
+  alertId      String?
+
+  detectedAt   DateTime @default(now())
+
+  @@index([deviceId, detectedAt])
+  @@index([status, aiAnalyzed])
+}
+
+model DeviceTelemetry {
+  id          String   @id @default(cuid())
+  deviceId    String
+  device      FieldDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  gasLevel    Float?
+  temperature Float?
+  pressure    Float?
+  acceleration Float?
+  voltage     Float?
+  currentMa   Float?
+
+  alertActive Boolean  @default(false)
+  recordedAt  DateTime @default(now())
+
+  @@index([deviceId, recordedAt])
+}
+
+model AIDecision {
+  id          String   @id @default(cuid())
+  type        String                                   // VISION_ANALYSIS, CHAT, VIDEO_GENERATION
+  provider    String                                   // CLAUDE, GEMINI
+  modelUsed   String
+
+  inputData   Json
+  outputData  Json
+  reasoning   String?
+  confidence  Float?
+
+  tokensInput  Int?
+  tokensOutput Int?
+  durationMs   Int?
+
+  autonomous     Boolean @default(false)
+  requiresHuman  Boolean @default(false)
+
+  visionDetectionId String?
+  telemetryId       String?
+  alertId           String?
+  incidentId        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([provider])
+}
+// ============ PIPELINE NETWORK ============
+
+model Pipeline {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  nameAr        String?
+  length        Float                       // km
+  diameter      Float                       // inches
+  material      String                      // STEEL, HDPE, COMPOSITE
+  status        String   @default("OPERATIONAL")  // OPERATIONAL, MAINTENANCE, INSPECTION, SHUTDOWN
+  productType   String                      // NATURAL_GAS, CRUDE_OIL, LPG, CONDENSATE
+  pressureMin   Float                       // bar (safe min)
+  pressureMax   Float                       // bar (safe max)
+  flowRate      Float?                      // m³/h
+  startSiteId   String?
+  endSiteId     String?
+  startLat      Float
+  startLng      Float
+  endLat        Float
+  endLng        Float
+  midPoints     String?                     // JSON array of [lat,lng] waypoints
+  installedAt   DateTime
+  lastInspection DateTime?
+  notes         String?
+  
+  pressurePoints PressurePoint[]
+  leakAlerts    LeakAlert[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model PressurePoint {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  pipelineId      String
+  pipeline        Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  latitude        Float
+  longitude       Float
+  positionKm      Float                     // distance from pipeline start
+  expectedMin     Float                     // safe min pressure
+  expectedMax     Float                     // safe max pressure
+  currentPressure Float?
+  currentFlow     Float?
+  currentTemp     Float?
+  status          String    @default("NORMAL")  // NORMAL, WARNING, CRITICAL
+  lastReadingAt   DateTime?
+  
+  readings        PressureReading[]
+  createdAt       DateTime  @default(now())
+}
+
+model PressureReading {
+  id          String        @id @default(cuid())
+  pointId     String
+  point       PressurePoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  pressure    Float                         // bar
+  flowRate    Float?                        // m³/h
+  temperature Float?                        // celsius
+  status      String        @default("NORMAL")  // NORMAL, WARNING, CRITICAL
+  recordedAt  DateTime      @default(now())
+  
+  @@index([pointId, recordedAt])
+}
+
+// ═══════ SECURITY — Login tracking + tamper-evident audit chain ═══════
+
+model LoginAttempt {
+  id          String   @id @default(cuid())
+  email       String   // attempted email
+  ipAddress   String?  // client IP (from X-Forwarded-For)
+  userAgent   String?
+  success     Boolean
+  failReason  String?  // BAD_PASSWORD, NO_USER, LOCKED_OUT, RATE_LIMITED
+  createdAt   DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@index([success, createdAt])
+}
+
+model AccountLockout {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  failCount   Int      @default(0)
+  lockedUntil DateTime?
+  lastFailAt  DateTime?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@index([lockedUntil])
+}
+
+// ═══════ AEGIS BRAIN — Central Orchestrator + Memory + Learning ═══════
+// These three tables form the "central brain": a memory of accumulated learning,
+// a journal of every cross-domain reasoning session, and a record of which
+// specialist agents were consulted within each session.
+
+model BrainMemory {
+  id              String   @id @default(cuid())
+  // Category — e.g., PIPELINE_LEAK_PATTERN, PERMIT_RISK, CONTRACTOR_HISTORY, WEATHER_CORRELATION
+  category        String
+  // Optional subject (the entity this learning is about)
+  subject         String?
+  // The actual learning, in plain English
+  content         String
+  contentAr       String?
+  // JSON refs to source incidents / sessions / decisions
+  evidence        String?
+  // 0-1, adjusts based on outcome feedback
+  confidence      Float    @default(0.5)
+  reinforcements  Int      @default(0)  // proven right
+  contradictions  Int      @default(0)  // proven wrong
+  // Tags for fast retrieval — JSON array of strings
+  tags            String?
+  // Optional embedding (kept as JSON for now — can wire to a vector DB later)
+  embedding       String?
+  // Lifecycle
+  status          String   @default("ACTIVE")  // ACTIVE, ARCHIVED, REJECTED
+  lastUsedAt      DateTime?
+  usedCount       Int      @default(0)
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  agentRuns       BrainAgentRun[]
+
+  @@index([category, status])
+  @@index([subject])
+  @@index([confidence])
+}
+
+model BrainSession {
+  id                  String   @id @default(cuid())
+  // What woke up the brain (e.g., PIPELINE_PRESSURE_ANOMALY, PERMIT_SUBMITTED, MANUAL_QUERY)
+  trigger             String
+  // Optional ref to the entity that triggered this (incidentId / permitId / etc.)
+  signalType          String?  // INCIDENT, PERMIT, ALERT, etc.
+  signalId            String?
+  status              String   @default("THINKING") // THINKING, COMPLETED, FAILED, CANCELLED
+  // JSON snapshot of inputs the brain considered
+  context             String
+  // List of agents the coordinator chose to consult (JSON array)
+  agentsConsulted     String?
+  // Final synthesized conclusion
+  conclusion          String?
+  conclusionAr        String?
+  confidence          Float?
+  // JSON array of { type, params } actions recommended
+  actionsRecommended  String?
+  // JSON array of actions actually taken
+  actionsTaken        String?
+  // Brain memories that were recalled during the session (JSON array of IDs)
+  recalledMemoryIds   String?
+  // Whether this needs HSSE manager review before executing actions
+  requiresApproval    Boolean  @default(false)
+  reviewedById        String?
+  reviewedAt          DateTime?
+  // The user who initiated (or null = autonomous)
+  userId              String?
+  siteId              String?
+  startedAt           DateTime @default(now())
+  completedAt         DateTime?
+  durationMs          Int?
+  totalTokens         Int      @default(0)
+  totalCostMicroUsd   Int      @default(0)
+
+  agentRuns           BrainAgentRun[]
+
+  @@index([trigger, startedAt])
+  @@index([status, startedAt])
+  @@index([signalId])
+  @@index([siteId, startedAt])
+}
+
+model BrainAgentRun {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         BrainSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  agentName       String   // PipelineAgent, PermitAgent, WellnessAgent, ForecastAgent, VisionAgent, Coordinator, Synthesizer
+  // JSON snapshot
+  input           String
+  output          String?
+  confidence      Float?
+  durationMs      Int?
+  tokensUsed      Int      @default(0)
+  // Status
+  status          String   @default("RUNNING")  // RUNNING, COMPLETED, FAILED
+  errorMessage    String?
+  // If this agent drew on a memory, link it
+  memoryId        String?
+  memory          BrainMemory? @relation(fields: [memoryId], references: [id])
+  createdAt       DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([agentName])
+}
+
+// ═══════ KNOWLEDGE CONTRIBUTIONS — humans teach the brain ═══════
+// Field workers, engineers, and managers add their accumulated observations.
+// Critical findings escalate immediately; routine ones enter a review queue.
+
+model KnowledgeContribution {
+  id              String   @id @default(cuid())
+  // How the contribution arrived
+  source          String   // QUICK_INSIGHT, DOCUMENT, INCIDENT_RETRO, VOICE_MEMO
+  // Raw input the user gave us (text, transcript, file path, etc.)
+  rawContent      String
+  // After AI extraction — JSON of { category, content, contentAr, subject, tags, confidence }
+  structuredContent String?
+  // Severity assigned by AI — CRITICAL fast-tracks past the review queue
+  severity        String   @default("MEDIUM")  // LOW, MEDIUM, HIGH, CRITICAL
+  // Workflow state
+  status          String   @default("PENDING")  // PENDING, AI_PROCESSED, APPROVED, REJECTED, AUTO_APPLIED, EXPIRED
+  // Optional context — link to a specific incident, site, etc.
+  contextType     String?  // incident, permit, site, pipeline, equipment
+  contextId       String?
+  // Bookkeeping
+  contributorId   String
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewerNotes   String?
+  // After acceptance, the memory IDs that were created from this contribution
+  resultingMemoryIds String?
+  // Document upload: stored file ref
+  fileUrl         String?
+  fileName        String?
+  fileSize        Int?
+  // Voice: original transcript
+  transcript      String?
+  language        String?
+  // If CRITICAL — link to the AISuggestion or Alert spawned
+  autoEscalatedTo String?  // JSON array of refs
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  reviews         KnowledgeReview[]
+
+  @@index([status, createdAt])
+  @@index([source, status])
+  @@index([contributorId])
+  @@index([severity, status])
+}
+
+model KnowledgeReview {
+  id              String   @id @default(cuid())
+  contributionId  String
+  contribution    KnowledgeContribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+  reviewerId      String
+  verdict         String   // AGREE, DISAGREE, NEEDS_MORE, NEUTRAL
+  comment         String?
+  createdAt       DateTime @default(now())
+
+  @@index([contributionId])
+}
+
+model MemoryConflict {
+  id              String   @id @default(cuid())
+  newContributionId String
+  existingMemoryId  String
+  // similarity 0-1 from a basic match — higher = more likely conflict
+  similarity      Float
+  // Detected conflict reason — e.g. "opposite recommendation", "different confidence", "newer evidence"
+  reason          String
+  resolution      String?  // KEEP_OLD, KEEP_NEW, MERGE, BOTH_VALID
+  resolvedById    String?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([newContributionId])
+  @@index([resolution, createdAt])
+}
+
+model ExpertProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  contributionsCount Int  @default(0)
+  acceptedCount   Int      @default(0)
+  rejectedCount   Int      @default(0)
+  // Computed trust weight 0-1; multiplied into memory confidence when this user contributes
+  trustWeight     Float    @default(0.5)
+  // JSON array of categories they're recognized in
+  specialties     String?
+  lastActiveAt    DateTime?
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  @@index([trustWeight])
+}
+
+// ═══════ AI SUGGESTIONS (P0 — Hallucination Gate) ═══════
+// AI proposals that need human approval before any side-effect runs.
+// Below the confidence threshold, the autonomous pipeline lands here
+// instead of cascading into Incident/Emergency/Alert/WhatsApp.
+
+model AISuggestion {
+  id              String   @id @default(cuid())
+  type            String                                    // PIPELINE_LEAK, PERMIT_RECOMMENDATION, WELLNESS_RISK, VOICE_ACTION
+  subjectType     String                                    // pipeline, permit, user, etc.
+  subjectId       String
+  proposedAction  String                                    // CREATE_INCIDENT, AUTO_APPROVE, LOCKDOWN, etc.
+  severity        String?                                   // LOW/MEDIUM/HIGH/CRITICAL
+  confidence      Float                                     // 0.0-1.0 — must be < auto-cascade threshold to land here
+  reasoning       String?                                   // Claude's explanation
+  reasoningAr     String?
+  aiAnalysis      String                                    // Full JSON dump from the model
+  metadata        String?                                   // Free-form JSON (linked siteId, idempotencyKey, etc.)
+  status          String   @default("PENDING")              // PENDING, APPROVED, REJECTED, EXPIRED, EXECUTED
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewerNotes   String?
+  // After approval, the system runs the cascade and records the resulting IDs here
+  resultRefs      String?                                   // JSON: { incidentId, leakAlertId, ... }
+  expiresAt       DateTime?
+  siteId          String?
+  decisionId      String?                                   // links to AIDecision row
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([type, status])
+  @@index([siteId])
+}
+
+// ═══════ AUTONOMY CONTROL & COST GUARDS (Phase 9) ═══════
+// Kill Switch + budget tracking + explainability infrastructure.
+
+model AutonomySettings {
+  id                    String   @id @default("singleton")
+  // Master kill switch — when false, NO autonomous action runs.
+  globalEnabled         Boolean  @default(true)
+  // Per-module switches
+  pipelineLoopEnabled   Boolean  @default(true)
+  forecastEnabled       Boolean  @default(true)
+  voiceActionsEnabled   Boolean  @default(true)
+  permitAutoApproval    Boolean  @default(false)
+  visionAutoActions     Boolean  @default(true)
+  // Demo Mode — disables real timers, only manual triggers work.
+  demoMode              Boolean  @default(false)
+  // Loop cadence
+  pipelinePollSeconds   Int      @default(30)
+  // Budget caps (USD-equivalent, computed from tokens)
+  dailyBudgetUsd        Float    @default(50.0)
+  monthlyBudgetUsd      Float    @default(1000.0)
+  // Hard rate limits
+  maxCallsPerMinute     Int      @default(20)
+  maxCallsPerHour       Int      @default(200)
+  // Audit
+  lastModifiedById      String?
+  lastModifiedAt        DateTime @updatedAt
+  createdAt             DateTime @default(now())
+}
+
+// Voice conversation memory — short rolling window per user/session.
+model VoiceMessage {
+  id          String   @id @default(cuid())
+  userId      String
+  sessionId   String                                      // grouping key per UI session
+  role        String                                      // "user" or "assistant"
+  transcript  String?                                     // raw transcript (user role)
+  content     String                                      // text said/responded
+  language    String?
+  intent      String?
+  action      String?
+  target      String?
+  metadata    String?                                     // JSON blob
+  createdAt   DateTime @default(now())
+
+  @@index([userId, sessionId, createdAt])
+  @@index([sessionId])
+}
+
+// ═══════ PILOT — Site Permissions ═══════
+
+model UserSiteAccess {
+  id            String   @id @default(cuid())
+  userId        String
+  siteId        String
+  accessLevel   String   @default("READ")                  // READ, WRITE, ADMIN
+  // Optional time-bounded access — used for contractors with shift hours.
+  validFrom     DateTime?
+  validUntil    DateTime?
+  shiftStartHour Int?                                       // 0-23, local time
+  shiftEndHour  Int?                                       // 0-23
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, siteId])
+  @@index([userId])
+  @@index([siteId])
+}
+
+// ═══════ PILOT — Worker Wellness (ESP32 wearables) ═══════
+
+model WorkerWellnessReading {
+  id              String   @id @default(cuid())
+  userId          String                                    // wearer
+  deviceId        String?                                   // FieldDevice (ESP32) ref by code
+  heartRate       Int?                                      // bpm
+  hrVariability   Float?                                    // ms (RMSSD)
+  bodyTemperature Float?                                    // celsius
+  ambientTemp     Float?                                    // celsius
+  humidity        Float?                                    // %
+  // Toxic-gas cumulative exposure — units = ppm × minutes
+  h2sExposurePpmMin   Float    @default(0)
+  coExposurePpmMin    Float    @default(0)
+  o2Level             Float?                                // %
+  stepsCount      Int      @default(0)
+  fallDetected    Boolean  @default(false)
+  // Computed risk band (LOW, MEDIUM, HIGH, CRITICAL)
+  wellnessLevel   String   @default("LOW")
+  recordedAt      DateTime @default(now())
+
+  @@index([userId, recordedAt])
+  @@index([wellnessLevel, recordedAt])
+}
+
+model WorkerWellnessAlert {
+  id              String   @id @default(cuid())
+  userId          String
+  alertType       String                                    // HEAT_STRESS, H2S_EXPOSURE, FALL, ELEVATED_HR, FATIGUE
+  severity        String   @default("MEDIUM")               // LOW, MEDIUM, HIGH, CRITICAL
+  message         String
+  messageAr       String?
+  aiReasoning     String?                                   // Claude explanation
+  recommendedAction String?
+  acknowledged    Boolean  @default(false)
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([severity, acknowledged])
+}
+
+// ═══════ PILOT — In-app Notifications ═══════
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String                                        // recipient
+  type        String                                        // INCIDENT, ALERT, ASSIGNMENT, EXPIRY, WELLNESS, SYSTEM
+  severity    String   @default("INFO")                     // INFO, WARNING, CRITICAL
+  title       String
+  titleAr     String?
+  body        String
+  bodyAr      String?
+  link        String?                                       // /path to navigate when clicked
+  metadata    String?                                       // JSON blob
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, readAt, createdAt])
+  @@index([userId, type])
+}
+
+model AICostLedger {
+  id            String   @id @default(cuid())
+  provider      String                                      // CLAUDE, GEMINI
+  model         String
+  module        String                                      // pipeline, voice, forecast, etc.
+  feature       String?                                     // sub-feature tag
+  inputTokens   Int
+  outputTokens Int
+  // Cost in micro-USD (= USD * 1_000_000), avoids float issues.
+  costMicroUsd  Int
+  durationMs    Int?
+  userId        String?
+  autonomous    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([module, createdAt])
+  @@index([createdAt])
+  @@index([provider, model])
+}
+
+// ═══════ VEHICLE MONITOR (ESP32 IoT) ═══════
+
+model VehicleReading {
+  id           String   @id @default(cuid())
+  deviceCode   String   @default("VEH-001")   // e.g. VEH-001
+  siteCode     String?
+  eventType    String   @default("NORMAL")     // NORMAL | CRASH
+  gasVal       Int      @default(0)            // 0–100 %
+  temperature  Float    @default(0)            // °C
+  pressure     Float    @default(0)            // Pa
+  acceleration Float    @default(0)            // m/s²
+  voltage      Float    @default(0)            // V
+  currentMa    Float    @default(0)            // mA
+  powerMw      Float    @default(0)            // mW
+  uptimeS      Int      @default(0)            // seconds since boot
+  recordedAt   DateTime @default(now())
+
+  @@index([deviceCode, recordedAt])
+  @@index([eventType, recordedAt])
+}
+
+model LeakAlert {
+  id                String   @id @default(cuid())
+  alertNumber       String   @unique
+  // Idempotency: (pipelineId + windowStart) hashed. Prevents duplicate cascades on retries.
+  idempotencyKey    String?  @unique
+  pipelineId        String
+  pipeline          Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  detectedAt        DateTime @default(now())
+  severity          String                  // LOW, MEDIUM, HIGH, CRITICAL
+  estimatedKmFromStart Float                // location estimate
+  estimatedLat      Float?
+  estimatedLng      Float?
+  confidence        Float                   // 0-1 from AI
+  pressureDrop      Float                   // bar
+  affectedPoints    String?                 // JSON array of point IDs
+  aiAnalysis        String?                 // Claude's full analysis (JSON)
+  aiSummary         String?                 // brief summary
+  status            String   @default("ACTIVE")  // ACTIVE, INVESTIGATING, RESOLVED, FALSE_ALARM
+  resolvedAt        DateTime?
+  resolvedBy        String?
+  resolution        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
