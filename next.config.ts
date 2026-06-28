@@ -8,5 +8,5 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
 };
-
+// vercel deploy
 export default nextConfig;
