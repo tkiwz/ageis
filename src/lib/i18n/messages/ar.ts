@@ -43,7 +43,7 @@ export const ar: Messages = {
     signingIn: "جارٍ تسجيل الدخول…",
     signOut: "تسجيل الخروج",
     email: "البريد الإلكتروني",
-    emailPlaceholder: "name@company.com",
+    emailPlaceholder: "user@aegis.com",
     password: "كلمة المرور",
     invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
     invalidInput: "أدخل بريداً إلكترونياً وكلمة مرور صحيحين",

@@ -44,7 +44,7 @@ export const en = {
     signingIn: "Signing in…",
     signOut: "Sign out",
     email: "Email",
-    emailPlaceholder: "name@company.com",
+    emailPlaceholder: "user@aegis.com",
     password: "Password",
     invalidCredentials: "Incorrect email or password",
     invalidInput: "Enter a valid email and password",

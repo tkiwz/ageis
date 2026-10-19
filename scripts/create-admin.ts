@@ -44,7 +44,7 @@ async function main() {
   const db = new PrismaClient();
   try {
     const name = (await ask("Full name: ")).trim();
-    const email = (await ask("Email: ")).trim().toLowerCase();
+    const email = ((await ask("Email [admin@aegis.com]: ")).trim() || "admin@aegis.com").toLowerCase();
     if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Name and a valid email are required.");
 
     rl.pause();

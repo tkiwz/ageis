@@ -73,8 +73,8 @@ test.describe("operator", () => {
       ["PUT", "/api/pipelines/does-not-exist", { name: "x" }],
       ["POST", "/api/pipelines", {}],
       ["POST", "/api/notify/whatsapp", { message: "test" }],
-      ["POST", "/api/tasks/simulate"],
-      ["DELETE", "/api/inspections/simulate"],
+      ["DELETE", "/api/tasks?id=does-not-exist"],
+      ["POST", "/api/observations/import", {}],
       ["POST", "/api/ai/generate-video", {}],
       ["POST", "/api/brain/think", {}],
     ];
