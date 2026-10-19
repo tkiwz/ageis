@@ -24,7 +24,7 @@ test.describe("smoke", () => {
 
   test("login page renders", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.locator("body")).toContainText(/sign in|email|password/i);
+    await expect(page.locator("body")).toContainText(/sign in|email|password|تسجيل الدخول|كلمة المرور/i);
   });
 
   test("dashboard redirects to login when unauthenticated", async ({ page }) => {

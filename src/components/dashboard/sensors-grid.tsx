@@ -4,6 +4,7 @@ import { useApi } from "@/hooks/use-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/client";
 
 interface SensorDevice {
   id: string;
@@ -25,6 +26,7 @@ interface SensorsResponse {
 }
 
 export function SensorsGrid() {
+  const t = useT();
   const { data, loading } = useApi<SensorsResponse>("/api/sensors", { refreshMs: 10000 });
 
   return (
@@ -33,18 +35,18 @@ export function SensorsGrid() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <Radio className="h-4 w-4 text-primary" />
-            IoT Sensors
+            {t("widgets.iotSensors")}
           </CardTitle>
           {data && (
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              {data.summary.online}/{data.summary.total} online
-              {data.summary.anomalies > 0 && <span className="ml-2 text-risk-critical">· {data.summary.anomalies} anomalies</span>}
+            <span className="text-[11px] text-muted-foreground">
+              {t("widgets.sensorsOnline", { online: data.summary.online, total: data.summary.total })}
+              {data.summary.anomalies > 0 && <span className="ms-2 text-risk-critical">· {t("widgets.anomalies", { n: data.summary.anomalies })}</span>}
             </span>
           )}
         </div>
       </CardHeader>
       <CardContent>
-        {loading && <div className="py-8 text-center text-sm text-muted-foreground">Loading sensors...</div>}
+        {loading && <div className="py-8 text-center text-sm text-muted-foreground">{t("widgets.loadingSensors")}</div>}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data?.devices.slice(0, 12).map((device) => <SensorTile key={device.id} device={device} />)}
         </div>
@@ -59,6 +61,7 @@ export function SensorsGrid() {
 }
 
 function SensorTile({ device }: { device: SensorDevice }) {
+  const t = useT();
   const reading = device.latestReading;
   const isOffline = device.status !== "ONLINE";
   const alertLevel = reading?.alertLevel ?? "NORMAL";
@@ -89,7 +92,7 @@ function SensorTile({ device }: { device: SensorDevice }) {
             <span className="text-[10px] text-muted-foreground">{device.unit}</span>
           </>
         ) : (
-          <span className="text-xs text-muted-foreground">No data</span>
+          <span className="text-xs text-muted-foreground">{t("widgets.noData")}</span>
         )}
       </div>
       <div className="mt-1 truncate text-[9px] text-muted-foreground/70">{device.siteName}</div>

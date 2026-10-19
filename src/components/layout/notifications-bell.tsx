@@ -6,6 +6,8 @@ import { Bell, BellRing, Check, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sound";
+import { useI18n } from "@/lib/i18n/client";
+import { formatDateTime } from "@/lib/i18n/translate";
 
 interface Notification {
   id: string;
@@ -23,6 +25,7 @@ interface Notification {
 const POLL_MS = 10_000;
 
 export function NotificationsBell() {
+  const { t, locale } = useI18n();
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
@@ -81,21 +84,21 @@ export function NotificationsBell() {
         size="icon"
         onClick={() => { setOpen(!open); playSound("click"); }}
         className="relative"
-        aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`}
+        aria-label={t("header.notifications")}
       >
         <Icon className={cn("h-4 w-4", unread > 0 && "text-primary")} />
         {unread > 0 && (
-          <span className="absolute right-1 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+          <span className="absolute end-1 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
             {unread > 99 ? "99+" : unread}
           </span>
         )}
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-96 rounded-lg border border-border bg-popover shadow-xl">
+        <div className="absolute end-0 top-full z-50 mt-2 w-96 rounded-lg border border-border bg-popover shadow-xl">
           <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
             <div className="text-sm font-semibold">
-              Notifications {unread > 0 && <span className="text-muted-foreground">({unread} unread)</span>}
+              {t("header.notifications")} {unread > 0 && <span className="text-muted-foreground">({t("header.unread", { n: unread })})</span>}
             </div>
             <Button
               variant="ghost"
@@ -104,13 +107,13 @@ export function NotificationsBell() {
               disabled={unread === 0}
               className="text-xs"
             >
-              <CheckCheck className="mr-1 h-3.5 w-3.5" /> Mark all read
+              <CheckCheck className="me-1 h-3.5 w-3.5" /> {t("header.markAllRead")}
             </Button>
           </div>
 
           <div className="max-h-96 overflow-y-auto">
             {items.length === 0 ? (
-              <div className="px-4 py-6 text-center text-xs text-muted-foreground">No notifications.</div>
+              <div className="px-4 py-6 text-center text-xs text-muted-foreground">{t("header.noNotifications")}</div>
             ) : (
               <ul className="divide-y divide-border/30">
                 {items.map((n) => {
@@ -140,7 +143,7 @@ export function NotificationsBell() {
                               markRead([n.id]);
                             }}
                             className="text-muted-foreground hover:text-foreground"
-                            title="Mark as read"
+                            title={t("header.markAsRead")}
                           >
                             <Check className="h-3.5 w-3.5" />
                           </button>
@@ -148,7 +151,7 @@ export function NotificationsBell() {
                       </div>
                       <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{n.body}</div>
                       <div className="mt-1 text-[10px] text-muted-foreground/70">
-                        {new Date(n.createdAt).toLocaleString()}
+                        {formatDateTime(n.createdAt, locale)}
                       </div>
                     </div>
                   );

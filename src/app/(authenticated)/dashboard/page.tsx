@@ -9,6 +9,9 @@ import {
 } from "lucide-react";
 import { ForecastCard } from "@/components/dashboard/forecast-card";
 import { cn } from "@/lib/utils";
+import { useSearchParams } from "next/navigation";
+import { useI18n, useT } from "@/lib/i18n/client";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface DashboardData {
   activeSites?:       number;
@@ -36,6 +39,8 @@ interface SensorReading {
 }
 
 export default function DashboardPage() {
+  const t = useT();
+  const denied = useSearchParams().get("denied") === "true";
   const { data, loading } = useApi<DashboardData>("/api/dashboard", { refreshMs: 10000 });
 
   // Show full spinner only on initial load (no data yet)
@@ -52,17 +57,23 @@ export default function DashboardPage() {
 
   return (
     <div className="container mx-auto max-w-7xl px-6 py-6">
+      {denied && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{t("layout.accessDenied")}</AlertDescription>
+        </Alert>
+      )}
       <div className="mb-6">
-        <h1 className="font-display text-3xl tracking-tight">Command Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Real-time HSSE operations overview</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">{t("dashboard.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("dashboard.subtitle")}</p>
       </div>
 
       {/* ── KPI Strip ──────────────────────────────────── */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard icon={AlertTriangle} label="Open Incidents"  value={d.openIncidents  ?? 0} tone="critical" />
-        <KpiCard icon={Activity}      label="Active Alerts"   value={d.criticalAlerts ?? 0} tone="warning"  />
-        <KpiCard icon={ShieldCheck}   label="Active Permits"  value={d.activePermits  ?? 0} tone="info"     />
-        <KpiCard icon={MapPin}        label="Sites Online"    value={`${d.activeSites ?? 0}`} tone="success" />
+        <KpiCard icon={AlertTriangle} label={t("dashboard.openIncidents")}  value={d.openIncidents  ?? 0} tone="critical" />
+        <KpiCard icon={Activity}      label={t("dashboard.activeAlerts")}   value={d.criticalAlerts ?? 0} tone="warning"  />
+        <KpiCard icon={ShieldCheck}   label={t("dashboard.activePermits")}  value={d.activePermits  ?? 0} tone="info"     />
+        <KpiCard icon={MapPin}        label={t("dashboard.sitesOnline")}    value={`${d.activeSites ?? 0}`} tone="success" />
       </div>
 
       {/* ── Site Sensor Widget ──────────────────────────── */}
@@ -78,9 +89,9 @@ export default function DashboardPage() {
       {/* ── Recent Alerts ──────────────────────────────── */}
       <Card className="glass">
         <CardContent className="p-4">
-          <div className="mb-3 text-sm font-semibold">Recent Alerts ({alerts.length})</div>
+          <div className="mb-3 text-sm font-semibold">{t("dashboard.recentAlerts", { n: alerts.length })}</div>
           {alerts.length === 0 ? (
-            <div className="py-6 text-center text-xs text-muted-foreground">No active alerts</div>
+            <div className="py-6 text-center text-xs text-muted-foreground">{t("dashboard.noAlerts")}</div>
           ) : (
             <div className="space-y-2">
               {alerts.slice(0, 10).map((a) => (
@@ -108,6 +119,7 @@ export default function DashboardPage() {
 // Site Sensor Widget  (replaces Vehicle Monitor)
 // ─────────────────────────────────────────────────────
 function SensorWidget() {
+  const { t } = useI18n();
   const [latest,  setLatest]  = useState<SensorReading | null>(null);
   const [online,  setOnline]  = useState(false);
   const [loaded,  setLoaded]  = useState(false);
@@ -143,15 +155,15 @@ function SensorWidget() {
   }
   const color = led();
   const LED_BG: Record<LedColor, string> = {
-    green: "bg-green-500", yellow: "bg-yellow-400",
-    red: "bg-red-500",     gray: "bg-muted-foreground/30",
+    green: "bg-risk-low", yellow: "bg-risk-medium",
+    red: "bg-risk-critical", gray: "bg-muted-foreground/30",
   };
   const LABEL: Record<LedColor, string> = {
-    green: "Normal", yellow: "Warning", red: "DANGER", gray: "No Signal",
+    green: t("dashboard.normal"), yellow: t("dashboard.warning"), red: t("dashboard.danger"), gray: t("dashboard.noSignal"),
   };
   const LABEL_COLOR: Record<LedColor, string> = {
-    green: "text-green-400", yellow: "text-yellow-400",
-    red: "text-red-400",     gray: "text-muted-foreground",
+    green: "text-risk-low", yellow: "text-risk-medium",
+    red: "text-risk-critical", gray: "text-muted-foreground",
   };
 
   if (!loaded) return null;
@@ -159,37 +171,37 @@ function SensorWidget() {
   return (
     <div className={cn(
       "rounded-2xl border bg-background/60 backdrop-blur p-4",
-      color === "red" ? "border-red-500/40" : "border-border/40"
+      color === "red" ? "border-risk-critical/40" : "border-border/40"
     )}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Radio className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold">Site Sensor Monitor</span>
+          <span className="text-sm font-semibold">{t("dashboard.sensorMonitor")}</span>
           {latest && (
-            <span className="text-[10px] text-muted-foreground font-mono">{latest.deviceCode}</span>
+            <span className="text-[10px] text-muted-foreground font-mono" dir="ltr">{latest.deviceCode}</span>
           )}
         </div>
         <div className={cn(
           "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium",
           online
-            ? "border-green-500/30 bg-green-500/10 text-green-400"
+            ? "border-risk-low/30 bg-risk-low/10 text-risk-low"
             : "border-border/40 text-muted-foreground"
         )}>
           {online ? <Wifi className="h-2.5 w-2.5" /> : <WifiOff className="h-2.5 w-2.5" />}
-          {online ? "Online" : "Offline"}
+          {online ? t("common.online") : t("common.offline")}
         </div>
       </div>
 
       {latest && (latest.gasVal ?? 0) > 50 && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-risk-critical/40 bg-risk-critical/10 px-3 py-2 text-xs text-risk-critical">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span className="font-semibold">CRITICAL GAS LEVEL — {latest.gasVal} ppm</span>
+          <span className="font-semibold">{t("dashboard.criticalGas", { v: latest.gasVal })}</span>
         </div>
       )}
       {latest && (latest.temperature ?? 0) >= 40 && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-xs text-orange-400">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-risk-high/40 bg-risk-high/10 px-3 py-2 text-xs text-risk-high">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span className="font-semibold">HIGH TEMPERATURE — {(latest.temperature ?? 0).toFixed(1)}°C</span>
+          <span className="font-semibold">{t("dashboard.highTemp", { v: (latest.temperature ?? 0).toFixed(1) })}</span>
         </div>
       )}
 
@@ -202,21 +214,21 @@ function SensorWidget() {
         </div>
         <SensorTile
           icon={<Thermometer className="h-3.5 w-3.5" />}
-          label="Temp"
+          label={t("dashboard.temp")}
           value={latest ? `${(latest.temperature ?? 0).toFixed(1)}°C` : "—"}
           warn={!!latest && latest.temperature >= 35}
           crit={!!latest && latest.temperature >= 40}
         />
         <SensorTile
           icon={<Wind className="h-3.5 w-3.5" />}
-          label="Gas"
+          label={t("dashboard.gas")}
           value={latest ? `${latest.gasVal} ppm` : "—"}
           warn={!!latest && latest.gasVal > 30}
           crit={!!latest && latest.gasVal > 50}
         />
         <SensorTile
           icon={<Zap className="h-3.5 w-3.5" />}
-          label="Voltage"
+          label={t("dashboard.voltage")}
           value={latest ? `${latest.voltage.toFixed(2)} V` : "—"}
           warn={false}
           crit={false}
@@ -224,9 +236,9 @@ function SensorWidget() {
       </div>
 
       <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground border-t border-border/20 pt-3">
-        <span>{online ? "Live readings from site sensors" : "Awaiting sensor data..."}</span>
+        <span>{online ? t("dashboard.liveReadings") : t("dashboard.awaitingData")}</span>
         <a href="/operations/sensors" className="text-primary hover:underline">
-          Full monitor →
+          {t("dashboard.fullMonitor")}
         </a>
       </div>
     </div>
@@ -239,19 +251,19 @@ function SensorTile({ icon, label, value, warn, crit }: {
   return (
     <div className={cn(
       "rounded-xl border px-3 py-3 text-center",
-      crit ? "border-red-500/30 bg-red-500/5" :
-      warn ? "border-yellow-400/30 bg-yellow-400/5" :
+      crit ? "border-risk-critical/30 bg-risk-critical/5" :
+      warn ? "border-risk-medium/30 bg-risk-medium/5" :
              "border-border/30"
     )}>
       <div className={cn(
         "flex items-center justify-center gap-1 text-[9px] uppercase tracking-wide mb-1.5",
-        crit ? "text-red-400" : warn ? "text-yellow-400" : "text-muted-foreground"
+        crit ? "text-risk-critical" : warn ? "text-risk-medium" : "text-muted-foreground"
       )}>
         {icon} {label}
       </div>
       <div className={cn(
         "font-display text-base tabular-nums",
-        crit ? "text-red-400" : warn ? "text-yellow-400" : ""
+        crit ? "text-risk-critical" : warn ? "text-risk-medium" : ""
       )}>{value}</div>
     </div>
   );
@@ -270,7 +282,7 @@ function KpiCard({ icon: Icon, label, value, tone }: {
   return (
     <Card className={`glass border ${colors[tone]}`}>
       <CardContent className="p-4">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
           <Icon className="h-3 w-3" />
           {label}
         </div>

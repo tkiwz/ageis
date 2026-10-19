@@ -10,8 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User as UserIcon, Settings } from "lucide-react";
-import { ROLE_LABELS, type Role } from "@/lib/constants";
+import { LogOut } from "lucide-react";
+import type { Role } from "@/lib/constants";
+import { useT } from "@/lib/i18n/client";
 
 interface UserMenuProps {
   user: {
@@ -31,7 +32,8 @@ function getInitials(name: string | null): string {
 }
 
 export function UserMenu({ user }: UserMenuProps) {
-  const roleLabel = ROLE_LABELS[user.role];
+  const t = useT();
+  const roleLabel = t(`roles.${user.role}`);
 
   return (
     <DropdownMenu>
@@ -42,13 +44,11 @@ export function UserMenu({ user }: UserMenuProps) {
               {getInitials(user.name)}
             </AvatarFallback>
           </Avatar>
-          <div className="hidden flex-col items-start text-left md:flex">
+          <div className="hidden flex-col items-start text-start md:flex">
             <span className="text-sm font-medium leading-none">
-              {user.name?.split(" ")[0] ?? "User"}
+              {user.name?.split(" ")[0] ?? user.email}
             </span>
-            <span className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-              {roleLabel.en}
-            </span>
+            <span className="mt-0.5 text-[10px] text-muted-foreground">{roleLabel}</span>
           </div>
         </button>
       </DropdownMenuTrigger>
@@ -63,33 +63,21 @@ export function UserMenu({ user }: UserMenuProps) {
             </Avatar>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{user.name}</div>
-              <div className="truncate text-xs text-muted-foreground">{user.email}</div>
-              <div className="mt-1 text-[10px] uppercase tracking-wider text-primary">
-                {roleLabel.en} · {roleLabel.ar}
-              </div>
+              <div className="truncate text-xs text-muted-foreground" dir="ltr">{user.email}</div>
+              <div className="mt-1 text-[10px] text-primary">{roleLabel}</div>
             </div>
           </div>
         </DropdownMenuLabel>
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem disabled>
-          <UserIcon className="h-4 w-4" />
-          Profile (coming soon)
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled>
-          <Settings className="h-4 w-4" />
-          Preferences (coming soon)
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
 
         <DropdownMenuItem
           onClick={() => signOut({ callbackUrl: "/login" })}
           className="text-destructive focus:text-destructive"
         >
           <LogOut className="h-4 w-4" />
-          Sign Out
+          {t("auth.signOut")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

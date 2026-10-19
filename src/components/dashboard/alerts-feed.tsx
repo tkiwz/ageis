@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertTriangle, Bell, Siren, Info } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
+import { useT } from "@/lib/i18n/client";
 
 interface Alert {
   id: string;
@@ -31,6 +32,7 @@ const typeConfig = {
 };
 
 export function AlertsFeed() {
+  const t = useT();
   const { data, loading } = useApi<AlertsResponse>("/api/alerts?limit=20", { refreshMs: 15000 });
 
   return (
@@ -39,11 +41,11 @@ export function AlertsFeed() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <Bell className="h-4 w-4 text-primary" />
-            Live Alerts Feed
+            {t("widgets.liveAlerts")}
           </CardTitle>
           {data && (
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              {data.summary.total} total · {data.summary.autonomous} autonomous
+            <span className="text-[11px] text-muted-foreground">
+              {t("widgets.alertsSummary", { total: data.summary.total, auto: data.summary.autonomous })}
             </span>
           )}
         </div>
@@ -51,8 +53,8 @@ export function AlertsFeed() {
       <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full">
           <div className="space-y-1.5 p-4 pt-0">
-            {loading && <div className="py-8 text-center text-sm text-muted-foreground">Loading alerts...</div>}
-            {!loading && data?.alerts.length === 0 && <div className="py-8 text-center text-sm text-muted-foreground">No alerts</div>}
+            {loading && <div className="py-8 text-center text-sm text-muted-foreground">{t("widgets.loadingAlerts")}</div>}
+            {!loading && data?.alerts.length === 0 && <div className="py-8 text-center text-sm text-muted-foreground">{t("widgets.noAlerts")}</div>}
             {data?.alerts.map((alert) => {
               const cfg = typeConfig[alert.type] ?? typeConfig.INFO;
               const Icon = cfg.icon;
@@ -70,7 +72,7 @@ export function AlertsFeed() {
                       {alert.site && (
                         <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground/70">
                           📍 {alert.site.name}
-                          {alert.isAutonomous && <span className="ml-1 rounded bg-primary/10 px-1.5 text-primary">AUTO</span>}
+                          {alert.isAutonomous && <span className="ms-1 rounded bg-primary/10 px-1.5 text-primary">{t("widgets.auto")}</span>}
                         </div>
                       )}
                     </div>

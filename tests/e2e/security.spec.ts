@@ -12,7 +12,8 @@ const ADMIN = "admin@aegis.local";
 const OPERATOR = "operator@aegis.local";
 
 test.skip(!PASSWORD, "E2E_PASSWORD not set");
-test.describe.configure({ mode: "serial" });
+// Remote DB (Tokyo) → each request can take seconds from a dev machine.
+test.setTimeout(180_000);
 
 async function apiLogin(request: APIRequestContext, email: string) {
   const { csrfToken } = await (await request.get("/api/auth/csrf")).json();

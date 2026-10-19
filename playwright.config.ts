@@ -12,8 +12,12 @@ export default defineConfig({
   reporter: process.env.CI ? [["html", { open: "never" }], ["github"]] : "list",
   use: {
     baseURL: BASE_URL,
+    // Same-origin header so API tests pass the CSRF origin check like a browser
+    extraHTTPHeaders: { Origin: BASE_URL },
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    // Optional: reuse a locally installed Chromium (PW_CHROMIUM_PATH)
+    launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
