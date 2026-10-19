@@ -15,10 +15,10 @@ export interface SectionTab {
  * Route tabs for merged sections (e.g. Incidents | Investigations,
  * Devices | Drones | ESP32). One place, no system-hopping.
  */
-export function SectionTabs({ tabs, className }: { tabs: SectionTab[]; className?: string }) {
+export function SectionTabs({ tabs, className, label }: { tabs: SectionTab[]; className?: string; label?: string }) {
   const pathname = usePathname();
   return (
-    <nav className={cn("mb-6 flex gap-1 overflow-x-auto rounded-xl bg-muted p-1", className)} aria-label="sections">
+    <nav className={cn("mb-6 flex gap-1 overflow-x-auto rounded-xl bg-muted p-1", className)} aria-label={label}>
       {tabs.map((tab) => {
         const active = tab.prefix === false ? pathname === tab.href : pathname === tab.href || pathname.startsWith(tab.href + "/");
         return (

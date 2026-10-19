@@ -6,6 +6,7 @@ import { NotificationsBell } from "./notifications-bell";
 import { SoundToggle } from "./sound-toggle";
 import { ThemeToggle } from "./theme-toggle";
 import type { SessionUser } from "@/types";
+import { NavMenuButton } from "./nav-drawer";
 
 interface HeaderProps {
   user: {
@@ -19,7 +20,8 @@ interface HeaderProps {
 
 export function Header({ user }: HeaderProps) {
   return (
-    <header className="material sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border/70 px-6">
+    <header className="material sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/70 px-4 lg:px-6">
+      <NavMenuButton />
       <Breadcrumb />
       <div className="ms-auto flex items-center gap-1">
         <LiveClock />

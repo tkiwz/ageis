@@ -80,6 +80,8 @@ export const coreNs = {
     footer: "Authorized personnel only",
   },
   layout: {
+    menu: "Menu",
+    closeMenu: "Close menu",
     systemOnline: "System online",
     language: "Language",
     switchTo: "العربية",
@@ -153,6 +155,23 @@ export const coreNs = {
     MEDIUM: "Medium",
     HIGH: "High",
     CRITICAL: "Critical",
+  },
+  tabs: {
+    label: "Sections",
+    incidents: "Incidents",
+    investigations: "Investigations",
+    wellness: "Wellness",
+    ppe: "PPE",
+    devices: "Field devices",
+    drones: "Drones",
+    esp32: "Wearable sensors",
+    commandWall: "Live view",
+    commandMap: "Map",
+    chat: "Chat",
+    brain: "Analysis",
+    knowledge: "Knowledge",
+    suggestions: "Suggestions",
+    predictions: "Predictions",
   },
 };
 

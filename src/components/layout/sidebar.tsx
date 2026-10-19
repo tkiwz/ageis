@@ -8,6 +8,7 @@ import { Logo } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/client";
 import type { Role } from "@/lib/constants";
+import { useNavDrawer } from "./nav-drawer";
 
 interface SidebarProps {
   role: Role;
@@ -17,6 +18,7 @@ export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
   const modules = filterNavigationForRole(role);
   const { isAr, t } = useI18n();
+  const { open, setOpen } = useNavDrawer();
 
   // The most specific matching href is active (so /command doesn't light up on /command/emergencies)
   const allHrefs = modules.flatMap((m) => m.items.map((i) => i.href));
@@ -25,7 +27,23 @@ export function Sidebar({ role }: SidebarProps) {
     .sort((a, b) => b.length - a.length)[0];
 
   return (
-    <aside className="material flex h-screen w-[248px] shrink-0 flex-col border-e border-border/70">
+    <>
+    {open && (
+      <button
+        type="button"
+        aria-label={t("layout.closeMenu")}
+        onClick={() => setOpen(false)}
+        className="fixed inset-0 z-40 bg-foreground/20 animate-fade-in lg:hidden"
+      />
+    )}
+    <aside
+      className={cn(
+        "flex h-screen w-[248px] shrink-0 flex-col border-e border-border/70",
+        "max-lg:fixed max-lg:inset-y-0 max-lg:start-0 max-lg:z-50 max-lg:bg-background max-lg:shadow-pop max-lg:transition-transform max-lg:duration-200 max-lg:ease-out",
+        open ? "max-lg:translate-x-0" : "max-lg:ltr:-translate-x-full max-lg:rtl:translate-x-full",
+        "lg:material",
+      )}
+    >
       <div className="flex h-14 items-center px-4">
         <Link href="/dashboard" className="rounded-lg outline-offset-4">
           <Logo showTagline={t("app.tagline")} />
@@ -79,5 +97,6 @@ export function Sidebar({ role }: SidebarProps) {
         <span className="truncate">{t("layout.systemOnline")}</span>
       </div>
     </aside>
+    </>
   );
 }

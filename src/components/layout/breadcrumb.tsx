@@ -13,7 +13,7 @@ export function Breadcrumb() {
 
   return (
     <nav className="flex min-w-0 items-center gap-1.5 text-sm">
-      <span className="text-muted-foreground">{t("app.name")}</span>
+      <span className="hidden text-muted-foreground sm:inline" dir="ltr">{t("app.name")}</span>
       {segments.map((seg, i) => {
         // Known segments are translated; ids (cuid etc.) are shown as "…"
         const known = seg in en.nav;

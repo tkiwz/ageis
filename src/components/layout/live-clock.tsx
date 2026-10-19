@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n/client";
-import { intlTag } from "@/lib/i18n/config";
+import { formatDate } from "@/lib/i18n/translate";
 
 export function LiveClock() {
   const { locale } = useI18n();
@@ -15,15 +15,14 @@ export function LiveClock() {
   }, []);
 
   if (!now) return null;
-  const tag = intlTag(locale);
 
   return (
     <div className="hidden text-end sm:block">
       <div className="num text-sm font-medium leading-none">
-        {now.toLocaleTimeString(tag, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+        {formatDate(now, locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
       </div>
       <div className="mt-1 text-[10px] text-muted-foreground">
-        {now.toLocaleDateString(tag, { weekday: "short", month: "short", day: "numeric" })}
+        {formatDate(now, locale, { weekday: "short", month: "short", day: "numeric" })}
       </div>
     </div>
   );

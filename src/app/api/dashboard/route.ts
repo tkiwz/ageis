@@ -26,6 +26,7 @@ export async function GET() {
       complianceItems,
       overdueTraining,
       activeEmergencies,
+      pendingPermits,
     ] = await Promise.all([
       db.site.count({ where: { ...siteIdWhere, status: "ACTIVE" } }),
       db.incident.count({ where: siteWhere }),
@@ -36,7 +37,8 @@ export async function GET() {
       db.ioTDevice.count({ where: { ...siteWhere, status: "ONLINE" } }),
       db.ioTDevice.count({ where: siteWhere }),
       db.alert.count({
-        where: { ...siteWhere, type: { in: ["CRITICAL", "EMERGENCY"] }, status: "SENT" },
+        // Unacknowledged critical/emergency alerts — the control room's first number
+        where: { ...siteWhere, type: { in: ["CRITICAL", "EMERGENCY", "GAS_CRITICAL", "FLAME", "FIRE"] }, acknowledgedAt: null },
       }),
       // AutonomousAction has no siteId — visible to all who can see autonomy.
       db.autonomousAction.count({ where: { status: "PENDING" } }),
@@ -46,6 +48,7 @@ export async function GET() {
         where: { status: { in: ["OVERDUE", "EXPIRED"] } },
       }),
       db.emergencyEvent.count({ where: { ...siteWhere, status: "ACTIVE" } }),
+      db.permit.count({ where: { ...siteWhere, status: { in: ["PENDING", "SUBMITTED", "IN_REVIEW"] } } }),
     ]);
 
     const totalCompliance = complianceItems.length;
@@ -55,13 +58,13 @@ export async function GET() {
 
     // Recent alerts for the dashboard feed
     const recentAlerts = await db.alert.findMany({
-      where: { ...siteWhere, status: "PENDING" },
+      where: { ...siteWhere, acknowledgedAt: null },
       orderBy: { createdAt: "desc" },
       take: 15,
       include: { site: { select: { name: true } } },
     });
 
-    const data: DashboardKpis & { activeEmergencies: number; recentAlerts: typeof recentAlerts } = {
+    const data: DashboardKpis & { activeEmergencies: number; pendingPermits: number; recentAlerts: typeof recentAlerts; generatedAt: string } = {
       activeSites,
       totalIncidents,
       openIncidents,
@@ -73,7 +76,9 @@ export async function GET() {
       complianceScore,
       overdueTraining,
       activeEmergencies,
+      pendingPermits,
       recentAlerts,
+      generatedAt: new Date().toISOString(),
     };
 
     return ok(data);

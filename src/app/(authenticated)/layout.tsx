@@ -1,6 +1,7 @@
 import { requireAuth } from "@/lib/auth-helpers";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { NavDrawerProvider } from "@/components/layout/nav-drawer";
 import { AlertSound } from "@/components/layout/alert-sound";
 import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
 import { AutonomyHeartbeat } from "@/components/autonomy/heartbeat";
@@ -13,6 +14,7 @@ export default async function AuthenticatedLayout({
   const user = await requireAuth();
 
   return (
+    <NavDrawerProvider>
     <div className="flex h-screen overflow-hidden bg-background">
       <AlertSound />
       <Sidebar role={user.role} />
@@ -35,5 +37,6 @@ export default async function AuthenticatedLayout({
       {/* Autonomous monitoring heartbeat — silent in prod, badge in dev */}
       <AutonomyHeartbeat />
     </div>
+    </NavDrawerProvider>
   );
 }

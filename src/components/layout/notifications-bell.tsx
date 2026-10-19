@@ -120,15 +120,15 @@ export function NotificationsBell() {
                   const isUnread = !n.readAt;
                   const sevColor =
                     n.severity === "CRITICAL"
-                      ? "border-l-destructive"
+                      ? "border-s-destructive"
                       : n.severity === "WARNING"
-                        ? "border-l-risk-medium"
-                        : "border-l-primary";
+                        ? "border-s-risk-medium"
+                        : "border-s-primary";
 
                   const body = (
                     <div
                       className={cn(
-                        "block border-l-2 px-3 py-2 transition-colors hover:bg-muted/30",
+                        "block border-s-2 px-3 py-2 transition-colors hover:bg-muted/30",
                         sevColor,
                         isUnread && "bg-primary/5",
                       )}
