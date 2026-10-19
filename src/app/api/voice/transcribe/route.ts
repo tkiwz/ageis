@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { aiGuard } from "@/lib/security/ai-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 const MAX_BYTES = 24 * 1024 * 1024; // Groq limit is 25 MB
 
 export async function POST(req: NextRequest) {
+  const limited = await aiGuard("voice");
+  if (limited) return limited;
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

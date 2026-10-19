@@ -19,6 +19,7 @@ import { friendlyClaudeError } from "@/lib/ai/error-friendly";
 import type { BrainSignal, SignalType } from "@/lib/brain/types";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
+import { aiGuard } from "@/lib/security/ai-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ const VALID_TYPES: SignalType[] = [
 export async function POST(req: NextRequest) {
   const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
   if (denied) return denied;
+  const limited = await aiGuard("brain");
+  if (limited) return limited;
   const session = await auth();
   if (!session?.user) return unauthorized();
 

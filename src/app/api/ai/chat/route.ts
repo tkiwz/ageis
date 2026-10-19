@@ -4,11 +4,14 @@ import { ok, fail } from "@/lib/api-response";
 import { claudeChat } from "@/lib/ai/claude-client";
 import { AEGIS_SYSTEM_PROMPT } from "@/lib/ai/prompt-templates";
 import type { ChatRequest, ChatResponse } from "@/types/ai";
+import { aiGuard } from "@/lib/security/ai-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const limited = await aiGuard("chat");
+  if (limited) return limited;
   const session = await auth();
   if (!session?.user) {
     return fail("UNAUTHORIZED", "Sign in required", 401);

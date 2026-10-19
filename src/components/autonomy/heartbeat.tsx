@@ -25,15 +25,10 @@ export function AutonomyHeartbeat() {
     let stopped = false;
 
     async function tickOnce() {
+      // Background tabs don't tick; the server also throttles to one tick
+      // per interval across all tabs and checks the autonomy gate itself.
+      if (document.hidden) return;
       try {
-        const settingsRes = await fetch("/api/autonomy/settings", { cache: "no-store" });
-        const settingsJson = await settingsRes.json();
-        if (!settingsJson.ok) return;
-        const s = settingsJson.data;
-        if (!s.globalEnabled || !s.pipelineLoopEnabled || s.demoMode) {
-          // Loop paused — keep polling settings but don't tick.
-          return;
-        }
         const tickRes = await fetch("/api/autonomy/pipeline/tick", {
           method: "POST",
           cache: "no-store",

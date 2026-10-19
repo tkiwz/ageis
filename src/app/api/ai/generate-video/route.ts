@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { claudeChat } from "@/lib/ai/claude-client";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
+import { aiGuard } from "@/lib/security/ai-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,6 +98,8 @@ interface VideoGenRequest {
 export async function POST(req: NextRequest) {
   const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
   if (denied) return denied;
+  const limited = await aiGuard("video");
+  if (limited) return limited;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 

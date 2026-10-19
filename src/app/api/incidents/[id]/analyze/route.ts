@@ -6,6 +6,7 @@ import { claudeChat } from "@/lib/ai/claude-client";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
+import { aiGuard } from "@/lib/security/ai-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,8 @@ Analyze the incident and respond ONLY with valid JSON matching this schema (no m
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
   if (denied) return denied;
+  const limited = await aiGuard("analyze");
+  if (limited) return limited;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 

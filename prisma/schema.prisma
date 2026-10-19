@@ -1046,6 +1046,7 @@ model AutonomySettings {
   // Hard rate limits
   maxCallsPerMinute   Int      @default(20)
   maxCallsPerHour     Int      @default(200)
+  lastPipelineTickAt  DateTime? // global tick throttle (one tick per poll interval for all tabs)
   // Audit
   lastModifiedById    String?
   lastModifiedAt      DateTime @updatedAt
@@ -1172,6 +1173,7 @@ model AICostLedger {
   @@index([module, createdAt])
   @@index([createdAt])
   @@index([provider, model])
+  @@index([userId, module, feature, createdAt])
 }
 
 // ═══════ VEHICLE MONITOR (ESP32 IoT) ═══════

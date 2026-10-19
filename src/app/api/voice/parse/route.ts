@@ -7,12 +7,15 @@ import { loadRecentTurns, recordTurn, formatContextForPrompt } from "@/lib/voice
 import { listAvailableActionsForRole, executeVoiceAction } from "@/lib/voice/actions";
 import { friendlyClaudeError } from "@/lib/ai/error-friendly";
 import type { Role } from "@/lib/constants";
+import { aiGuard } from "@/lib/security/ai-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  const limited = await aiGuard("voice");
+  if (limited) return limited;
   const session = await auth();
   if (!session?.user) return unauthorized();
 

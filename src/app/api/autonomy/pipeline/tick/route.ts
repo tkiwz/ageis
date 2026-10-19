@@ -17,6 +17,8 @@ import { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api-response";
 import { pipelineLoopTick } from "@/lib/autonomy/pipeline-loop";
 import { analyzeAutonomously } from "@/lib/autonomy/pipeline-analyzer";
+import { db } from "@/lib/db";
+import { getAutonomySettings } from "@/lib/autonomy/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +39,18 @@ export async function POST(req: NextRequest) {
     authorized = Boolean(session?.user);
   }
   if (!authorized) return fail("UNAUTHORIZED", "Sign in or provide x-cron-secret", 401);
+
+  // Global throttle: many open tabs share one tick per poll interval.
+  // Atomic claim — only the first caller in the window runs the scan.
+  const settings = await getAutonomySettings();
+  const gapSeconds = Math.max(30, settings.pipelinePollSeconds);
+  const claimed = await db.$executeRaw`
+    UPDATE "AutonomySettings" SET "lastPipelineTickAt" = now()
+    WHERE id = 'singleton'
+      AND ("lastPipelineTickAt" IS NULL OR "lastPipelineTickAt" < now() - make_interval(secs => ${gapSeconds}))`;
+  if (claimed === 0) {
+    return ok({ ranAt: new Date().toISOString(), blocked: "throttled", scanned: 0, hits: [], skippedByCooldown: 0, analyzed: [] });
+  }
 
   const tick = await pipelineLoopTick();
   if (tick.blocked) {
