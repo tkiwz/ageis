@@ -7,6 +7,8 @@ import type { NextAuthConfig } from "next-auth";
  * Page RBAC lives in middleware.ts (canAccessRoute).
  */
 export const authConfig = {
+  // Self-hosted (Docker / next start) behind a proxy; Vercel trusts its host anyway.
+  trustHost: true,
   pages: {
     signIn: "/login",
     error: "/login",

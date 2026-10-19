@@ -1,2 +1,3 @@
-# Handoff
-db-connection-limit done locally. Next: owner updates Vercel env + redeploy, then watch logs for P2024 / "max clients".
+# Handoff → DevOps
+Branch fix/security-quality-speed ready. Region hnd1 via vercel.json. CI in .github/workflows/ci.yml.
+Check preview: login per role, devices pages, dashboard data. Then merge.

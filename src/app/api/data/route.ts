@@ -25,6 +25,21 @@ export const dynamic = "force-dynamic";
 //  Helpers
 // ─────────────────────────────────────────────────────────────
 
+type Num = number | string;
+interface VehiclePayload {
+  deviceCode?: string;
+  siteCode?: string | null;
+  eventType?: string;
+  gas_val?: Num;
+  temperature?: Num;
+  pressure?: Num;
+  acceleration?: Num;
+  voltage?: Num;
+  current_mA?: Num;
+  power_mW?: Num;
+  uptime_s?: Num;
+}
+
 function checkDeviceKey(req: NextRequest): boolean {
   return verifyDeviceSecret(req);
 }
@@ -43,7 +58,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let body: Record<string, unknown> = {};
+    let body: VehiclePayload = {};
     try {
       const text = await req.text();
       if (text.trim()) body = JSON.parse(text);
@@ -64,8 +79,8 @@ export async function POST(req: NextRequest) {
     } = body;
 
     const gasNum   = Math.round(Number(gas_val));
-    const tempNum  = parseFloat(temperature);
-    const accelNum = parseFloat(acceleration);
+    const tempNum  = parseFloat(String(temperature));
+    const accelNum = parseFloat(String(acceleration));
 
     // ── 1. Store the reading ──────────────────────────────
     await db.vehicleReading.create({
@@ -75,12 +90,12 @@ export async function POST(req: NextRequest) {
         eventType,
         gasVal:      gasNum,
         temperature: tempNum,
-        pressure:    parseFloat(pressure),
+        pressure:    parseFloat(String(pressure)),
         acceleration: accelNum,
-        voltage:     parseFloat(voltage),
-        currentMa:   parseFloat(current_mA),
-        powerMw:     parseFloat(power_mW),
-        uptimeS:     parseInt(uptime_s),
+        voltage:     parseFloat(String(voltage)),
+        currentMa:   parseFloat(String(current_mA)),
+        powerMw:     parseFloat(String(power_mW)),
+        uptimeS:     parseInt(String(uptime_s)),
       },
     });
 
@@ -118,7 +133,7 @@ export async function POST(req: NextRequest) {
             description:     `ESP32 vehicle monitor (${deviceCode}) detected a severe impact.\n` +
                              `Force: ${accelNum.toFixed(1)} m/s²\n` +
                              `Gas: ${gasNum}% | Temperature: ${tempNum.toFixed(1)}°C\n` +
-                             `Voltage: ${parseFloat(voltage).toFixed(2)} V`,
+                             `Voltage: ${parseFloat(String(voltage)).toFixed(2)} V`,
             type:            "VEHICLE",
             severity:        accelNum > 50 ? "CRITICAL" : "HIGH",
             status:          "REPORTED",

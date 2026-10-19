@@ -180,16 +180,16 @@ function SensorWidget() {
         </div>
       </div>
 
-      {latest?.gasVal > 50 && (
+      {latest && (latest.gasVal ?? 0) > 50 && (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <span className="font-semibold">CRITICAL GAS LEVEL — {latest.gasVal} ppm</span>
         </div>
       )}
-      {latest?.temperature >= 40 && (
+      {latest && (latest.temperature ?? 0) >= 40 && (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-xs text-orange-400">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span className="font-semibold">HIGH TEMPERATURE — {latest.temperature.toFixed(1)}°C</span>
+          <span className="font-semibold">HIGH TEMPERATURE — {(latest.temperature ?? 0).toFixed(1)}°C</span>
         </div>
       )}
 
@@ -203,7 +203,7 @@ function SensorWidget() {
         <SensorTile
           icon={<Thermometer className="h-3.5 w-3.5" />}
           label="Temp"
-          value={latest ? `${latest.temperature.toFixed(1)}°C` : "—"}
+          value={latest ? `${(latest.temperature ?? 0).toFixed(1)}°C` : "—"}
           warn={!!latest && latest.temperature >= 35}
           crit={!!latest && latest.temperature >= 40}
         />

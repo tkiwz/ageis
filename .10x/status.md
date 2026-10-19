@@ -1,7 +1,6 @@
-# Status
-Discovery Complete (2026-10-19).
-## db-connection-limit — DONE (local commit, not pushed)
-- ADR-001 accepted. Code + verify done.
-- TODO (owner): set Vercel env DATABASE_URL (6543 + pgbouncer=true&connection_limit=5&pool_timeout=20) and DIRECT_URL (5432). Redeploy.
-- Suggest: Vercel function region hnd1 (DB in ap-northeast-1).
-Open risks: no CI, build errors skipped, stale README, 25 TS errors.
+# Status (2026-10-19)
+## db-connection-limit — DONE (5e6dab8)
+## security-quality-speed — Verification done locally, branch fix/security-quality-speed
+- Next: push branch → Vercel preview check → owner approves merge to main.
+- Owner TODO before/at merge: Vercel env DATABASE_URL → 6543 + pgbouncer=true&connection_limit=5&pool_timeout=20; add DIRECT_URL (5432).
+Open: register/demo-setup kept (owner); migrations baseline; ESLint config; UX review of pages.
