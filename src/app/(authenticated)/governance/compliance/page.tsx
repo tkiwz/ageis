@@ -50,7 +50,6 @@ export default function CompliancePage() {
   const [items,      setItems]      = useState<ComplianceItem[]>([]);
   const [filter,     setFilter]     = useState<Filter>("ALL");
   const [loading,    setLoading]    = useState(true);
-  const [simulating, setSimulating] = useState(false);
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -71,22 +70,8 @@ export default function CompliancePage() {
     lockdown:  items.filter((i) => i.triggersLockdown).length,
   };
 
-  async function simulate() {
-    if (!confirm("Create 10 sample compliance items?")) return;
-    setSimulating(true);
-    await fetch("/api/compliance/items/simulate", { method: "POST" });
-    await loadItems();
-    setSimulating(false);
-  }
 
-  async function clearSim() {
-    setSimulating(true);
-    await fetch("/api/compliance/items/simulate", { method: "DELETE" });
-    await loadItems();
-    setSimulating(false);
-  }
 
-  const hasSim = items.some((i) => i.title.startsWith("[SIM-CI]"));
 
   return (
     <div className="container mx-auto max-w-5xl px-6 py-6 space-y-5">
@@ -106,19 +91,6 @@ export default function CompliancePage() {
             className="rounded-lg border border-border/40 p-2.5 text-muted-foreground hover:text-foreground">
             <RefreshCw className="h-4 w-4" />
           </button>
-          {hasSim ? (
-            <button onClick={clearSim} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-xs text-red-400 hover:bg-red-500/20 disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-              Clear Sim
-            </button>
-          ) : (
-            <button onClick={simulate} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground hover:border-primary/40 hover:text-primary disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
-              {simulating ? "Loading…" : "Simulate"}
-            </button>
-          )}
         </div>
       </div>
 
@@ -151,11 +123,7 @@ export default function CompliancePage() {
         <div className="rounded-2xl border border-dashed border-border/50 bg-muted/5 py-16 text-center space-y-3">
           <div className="text-4xl">📋</div>
           <div className="font-semibold">No compliance items</div>
-          <div className="text-sm text-muted-foreground max-w-sm mx-auto">Load simulation data to see how compliance tracking works.</div>
-          <button onClick={simulate} disabled={simulating}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-            <FlaskConical className="h-4 w-4" /> Simulate
-          </button>
+          <div className="text-sm text-muted-foreground max-w-sm mx-auto">Add your first compliance item to start tracking.</div>
         </div>
       ) : (
         <div className="space-y-2.5">

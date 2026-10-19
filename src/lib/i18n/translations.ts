@@ -6,7 +6,7 @@
  *      <h1>{t("nav.dashboard")}</h1>
  */
 
-export type Language = "en" | "ar" | "ur" | "ne";
+export type Language = "en" | "ar";
 
 export const LANGUAGES: Record<Language, {
   name: string;
@@ -16,8 +16,6 @@ export const LANGUAGES: Record<Language, {
 }> = {
   en: { name: "English", nativeName: "English", flag: "🇬🇧", rtl: false },
   ar: { name: "Arabic", nativeName: "العربية", flag: "🇴🇲", rtl: true },
-  ur: { name: "Urdu", nativeName: "اردو", flag: "🇵🇰", rtl: true },
-  ne: { name: "Nepali", nativeName: "नेपाली", flag: "🇳🇵", rtl: false },
 };
 
 export type TranslationKey = keyof typeof translations.en;
@@ -213,193 +211,7 @@ export const translations = {
     "worker.checkSensors": "افحص حساساتي",
   },
 
-  ur: {
-    // Common
-    "common.welcome": "AEGIS میں خوش آمدید",
-    "common.login": "لاگ ان",
-    "common.logout": "لاگ آؤٹ",
-    "common.save": "محفوظ کریں",
-    "common.cancel": "منسوخ کریں",
-    "common.delete": "حذف کریں",
-    "common.edit": "ترمیم کریں",
-    "common.search": "تلاش کریں",
-    "common.loading": "لوڈ ہو رہا ہے...",
-    "common.confirm": "تصدیق",
-    "common.yes": "ہاں",
-    "common.no": "نہیں",
 
-    // Navigation
-    "nav.command": "کمانڈ سینٹر",
-    "nav.operations": "آپریشنز",
-    "nav.safety": "سیفٹی",
-    "nav.governance": "گورننس",
-    "nav.intelligence": "انٹیلیجنس",
-    "nav.admin": "ایڈمنسٹریشن",
-    "nav.dashboard": "ڈیش بورڈ",
-    "nav.map": "سائٹ کا نقشہ",
-    "nav.emergencies": "ایمرجنسی",
-    "nav.sites": "کام کی جگہیں",
-    "nav.pipelines": "پائپ لائنز",
-    "nav.permits": "پرمٹس",
-    "nav.sensors": "سینسرز",
-    "nav.tasks": "کام",
-    "nav.devices": "فیلڈ ڈیوائسز",
-    "nav.drones": "ڈرونز",
-    "nav.esp32": "لائیو مانیٹرنگ",
-    "nav.incidents": "حادثات",
-    "nav.observations": "مشاہدات",
-    "nav.investigations": "تحقیقات",
-    "nav.risk": "خطرات کی تشخیص",
-    "nav.ppe": "PPE مانیٹر",
-    "nav.aichat": "AI چیٹ",
-    "nav.predictions": "AI پیشن گوئیاں",
-    "nav.rules": "رولز انجن",
-    "nav.audit": "آڈٹ لاگ",
-
-    // Status
-    "status.normal": "نارمل",
-    "status.warning": "وارننگ",
-    "status.critical": "خطرناک",
-    "status.active": "فعال",
-    "status.operational": "آپریشنل",
-    "status.maintenance": "مرمت",
-    "status.offline": "آف لائن",
-
-    // Severity
-    "severity.low": "کم",
-    "severity.medium": "درمیانہ",
-    "severity.high": "زیادہ",
-    "severity.critical": "خطرناک",
-
-    // Pipelines
-    "pipeline.title": "پائپ لائن نیٹ ورک",
-    "pipeline.subtitle": "پائپ لائن انفراسٹرکچر کی حقیقی وقت کی نگرانی",
-    "pipeline.total": "کل پائپ لائنز",
-    "pipeline.operational": "آپریشنل",
-    "pipeline.activeLeaks": "فعال لیکس",
-    "pipeline.pressureAlerts": "پریشر الرٹس",
-    "pipeline.length": "لمبائی",
-    "pipeline.diameter": "قطر",
-    "pipeline.pressure": "دباؤ",
-    "pipeline.simulate": "اینومالی سمولیٹ کریں",
-    "pipeline.analyze": "AEGIS AI سے تجزیہ کریں",
-    "pipeline.leakDetected": "لیک پایا گیا",
-    "pipeline.confidence": "اعتماد",
-    "pipeline.immediateActions": "فوری اقدامات",
-    "pipeline.predictions": "پیشن گوئیاں",
-    "pipeline.rootCause": "بنیادی وجہ",
-
-    // Voice
-    "voice.listening": "سن رہا ہوں...",
-    "voice.processing": "پروسیسنگ...",
-    "voice.tryAgain": "دوبارہ کوشش کریں",
-    "voice.tapToSpeak": "بولنے کے لیے ٹیپ کریں",
-
-    // Safety
-    "safety.emergency": "ایمرجنسی",
-    "safety.evacuate": "نکل جائیں",
-    "safety.allClear": "سب کلیئر",
-
-    // Worker
-    "worker.iAmSafe": "میں محفوظ ہوں",
-    "worker.needHelp": "مجھے مدد چاہیے",
-    "worker.reportIncident": "واقعہ رپورٹ کریں",
-    "worker.checkSensors": "میرے سینسرز چیک کریں",
-  },
-
-  ne: {
-    // Common
-    "common.welcome": "AEGIS मा स्वागत छ",
-    "common.login": "लग इन",
-    "common.logout": "लग आउट",
-    "common.save": "सेभ गर्नुहोस्",
-    "common.cancel": "रद्द गर्नुहोस्",
-    "common.delete": "मेटाउनुहोस्",
-    "common.edit": "सम्पादन",
-    "common.search": "खोज्नुहोस्",
-    "common.loading": "लोड हुँदै...",
-    "common.confirm": "पुष्टि",
-    "common.yes": "हो",
-    "common.no": "होइन",
-
-    // Navigation
-    "nav.command": "कमाण्ड सेन्टर",
-    "nav.operations": "सञ्चालन",
-    "nav.safety": "सुरक्षा",
-    "nav.governance": "शासन",
-    "nav.intelligence": "बुद्धिमत्ता",
-    "nav.admin": "प्रशासन",
-    "nav.dashboard": "ड्यासबोर्ड",
-    "nav.map": "साइट नक्सा",
-    "nav.emergencies": "आपतकाल",
-    "nav.sites": "कार्य साइटहरू",
-    "nav.pipelines": "पाइपलाइनहरू",
-    "nav.permits": "अनुमतिहरू",
-    "nav.sensors": "सेन्सरहरू",
-    "nav.tasks": "कार्यहरू",
-    "nav.devices": "फिल्ड उपकरणहरू",
-    "nav.drones": "ड्रोनहरू",
-    "nav.esp32": "लाइभ निगरानी",
-    "nav.incidents": "घटनाहरू",
-    "nav.observations": "अवलोकनहरू",
-    "nav.investigations": "अनुसन्धान",
-    "nav.risk": "जोखिम मूल्यांकन",
-    "nav.ppe": "PPE मनिटर",
-    "nav.aichat": "AI च्याट",
-    "nav.predictions": "AI भविष्यवाणीहरू",
-    "nav.rules": "नियम इन्जिन",
-    "nav.audit": "अडिट लग",
-
-    // Status
-    "status.normal": "सामान्य",
-    "status.warning": "चेतावनी",
-    "status.critical": "गम्भीर",
-    "status.active": "सक्रिय",
-    "status.operational": "सञ्चालनमा",
-    "status.maintenance": "मर्मत",
-    "status.offline": "अफलाइन",
-
-    // Severity
-    "severity.low": "कम",
-    "severity.medium": "मध्यम",
-    "severity.high": "उच्च",
-    "severity.critical": "गम्भीर",
-
-    // Pipelines
-    "pipeline.title": "पाइपलाइन नेटवर्क",
-    "pipeline.subtitle": "पाइपलाइन पूर्वाधारको वास्तविक समय निगरानी",
-    "pipeline.total": "कुल पाइपलाइनहरू",
-    "pipeline.operational": "सञ्चालनमा",
-    "pipeline.activeLeaks": "सक्रिय चुहावटहरू",
-    "pipeline.pressureAlerts": "दबाव चेतावनीहरू",
-    "pipeline.length": "लम्बाइ",
-    "pipeline.diameter": "व्यास",
-    "pipeline.pressure": "दबाव",
-    "pipeline.simulate": "अनोमलि सिमुलेट",
-    "pipeline.analyze": "AEGIS AI सँग विश्लेषण",
-    "pipeline.leakDetected": "चुहावट पत्ता लाग्यो",
-    "pipeline.confidence": "विश्वास",
-    "pipeline.immediateActions": "तत्काल कार्यहरू",
-    "pipeline.predictions": "भविष्यवाणीहरू",
-    "pipeline.rootCause": "मूल कारण",
-
-    // Voice
-    "voice.listening": "सुन्दै...",
-    "voice.processing": "प्रशोधन गर्दै...",
-    "voice.tryAgain": "फेरि प्रयास गर्नुहोस्",
-    "voice.tapToSpeak": "बोल्न ट्याप गर्नुहोस्",
-
-    // Safety
-    "safety.emergency": "आपतकाल",
-    "safety.evacuate": "खाली गर्नुहोस्",
-    "safety.allClear": "सबै सफा",
-
-    // Worker
-    "worker.iAmSafe": "म सुरक्षित छु",
-    "worker.needHelp": "मलाई मद्दत चाहिन्छ",
-    "worker.reportIncident": "घटना रिपोर्ट गर्नुहोस्",
-    "worker.checkSensors": "मेरो सेन्सरहरू जाँच गर्नुहोस्",
-  },
 } as const;
 
 /**

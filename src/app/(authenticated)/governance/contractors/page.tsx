@@ -52,7 +52,6 @@ export default function ContractorsPage() {
   const [items,      setItems]      = useState<Contractor[]>([]);
   const [filter,     setFilter]     = useState<Filter>("ALL");
   const [loading,    setLoading]    = useState(true);
-  const [simulating, setSimulating] = useState(false);
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -76,22 +75,8 @@ export default function ContractorsPage() {
     }).length,
   };
 
-  async function simulate() {
-    if (!confirm("Load 10 real Gulf region contractor companies?")) return;
-    setSimulating(true);
-    await fetch("/api/contractors/simulate", { method: "POST" });
-    await loadItems();
-    setSimulating(false);
-  }
 
-  async function clearSim() {
-    setSimulating(true);
-    await fetch("/api/contractors/simulate", { method: "DELETE" });
-    await loadItems();
-    setSimulating(false);
-  }
 
-  const hasSim = items.some((c) => c.name.startsWith("[SIM-CO]"));
 
   return (
     <div className="container mx-auto max-w-5xl px-6 py-6 space-y-5">
@@ -111,19 +96,6 @@ export default function ContractorsPage() {
             className="rounded-lg border border-border/40 p-2.5 text-muted-foreground hover:text-foreground">
             <RefreshCw className="h-4 w-4" />
           </button>
-          {hasSim ? (
-            <button onClick={clearSim} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-xs text-red-400 hover:bg-red-500/20 disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-              Clear Sim
-            </button>
-          ) : (
-            <button onClick={simulate} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground hover:border-primary/40 hover:text-primary disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
-              {simulating ? "Loading…" : "Load Gulf Companies"}
-            </button>
-          )}
         </div>
       </div>
 
@@ -157,10 +129,6 @@ export default function ContractorsPage() {
           <div className="text-4xl">🏗️</div>
           <div className="font-semibold">No contractors yet</div>
           <div className="text-sm text-muted-foreground">Load sample Gulf region companies to get started.</div>
-          <button onClick={simulate} disabled={simulating}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-            <FlaskConical className="h-4 w-4" /> Load Gulf Companies
-          </button>
         </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">

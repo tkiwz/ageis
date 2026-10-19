@@ -4,7 +4,6 @@ import { Header } from "@/components/layout/header";
 import { AlertSound } from "@/components/layout/alert-sound";
 import { VoiceCommandButton } from "@/components/voice/VoiceCommandButton";
 import { AutonomyHeartbeat } from "@/components/autonomy/heartbeat";
-import { LangProvider } from "@/lib/lang-context";
 
 export default async function AuthenticatedLayout({
   children,
@@ -14,7 +13,6 @@ export default async function AuthenticatedLayout({
   const user = await requireAuth();
 
   return (
-    <LangProvider>
     <div className="flex h-screen overflow-hidden bg-background">
       <AlertSound />
       <Sidebar role={user.role} />
@@ -37,6 +35,5 @@ export default async function AuthenticatedLayout({
       {/* Autonomous monitoring heartbeat — silent in prod, badge in dev */}
       <AutonomyHeartbeat />
     </div>
-    </LangProvider>
   );
 }

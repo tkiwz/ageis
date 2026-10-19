@@ -1,14 +1,23 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/components/auth-provider";
-import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
+import { I18nProvider } from "@/lib/i18n/client";
+import { getLocale, getMessages } from "@/lib/i18n/server";
+import { dirOf } from "@/lib/i18n/config";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+  display: "swap",
+});
+
+const plexArabic = IBM_Plex_Sans_Arabic({
+  subsets: ["arabic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-arabic",
   display: "swap",
 });
 
@@ -41,14 +50,16 @@ export const viewport = {
   maximumScale: 1,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const locale = await getLocale();
   return (
     <html
-      lang="en"
+      lang={locale}
+      dir={dirOf(locale)}
       suppressHydrationWarning
-      className={`${inter.variable} ${jetbrains.variable} dark`}
+      className={`${inter.variable} ${plexArabic.variable} ${jetbrains.variable} dark`}
     >
       <body className="font-sans antialiased">
         {/* Register PWA service worker — silent if blocked */}
@@ -75,14 +86,14 @@ export default function RootLayout({
             `,
           }}
         />
-        <LanguageProvider>
+        <I18nProvider locale={locale} messages={getMessages(locale)}>
           <AuthProvider>
             <ThemeProvider attribute="class" defaultTheme="dark">
               {children}
-              <Toaster richColors position="top-right" />
+              <Toaster richColors position={locale === "ar" ? "top-left" : "top-right"} />
             </ThemeProvider>
           </AuthProvider>
-        </LanguageProvider>
+        </I18nProvider>
       </body>
     </html>
   );

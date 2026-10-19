@@ -78,7 +78,7 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
     if (json.ok) setBudget(json.data);
   }
 
-  const [demoBusy, setDemoBusy] = useState<null | "tick" | "minor" | "major" | "critical">(null);
+  const [demoBusy, setDemoBusy] = useState<null | "tick">(null);
   const [demoLog, setDemoLog] = useState<string | null>(null);
 
   async function runTickNow() {
@@ -105,43 +105,6 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
     }
   }
 
-  async function injectAnomaly(sev: "minor" | "major" | "critical") {
-    setDemoBusy(sev);
-    setDemoLog(null);
-    try {
-      const res = await fetch("/api/autonomy/demo/inject-anomaly", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ severity: sev }),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error?.message ?? "Inject failed");
-      const d = json.data;
-      const a = d.analysis;
-      setDemoLog(
-        a.leakDetected
-          ? `LEAK on ${d.injected.code}: ${a.severity} · ${(a.confidence * 100).toFixed(0)}% conf · ${a.durationMs}ms`
-          : a.blocked
-            ? `Blocked: ${a.blocked}`
-            : `Injected on ${d.injected.code} but Claude says no leak`,
-      );
-      // Sound feedback for the demo
-      if (a.leakDetected) {
-        if (a.severity === "CRITICAL") playSound("siren");
-        else playSound("leak");
-      } else if (a.blocked) {
-        playSound("error");
-      } else {
-        playSound("info");
-      }
-      refreshBudget();
-    } catch (err) {
-      setDemoLog(err instanceof Error ? err.message : "Failed");
-      playSound("error");
-    } finally {
-      setDemoBusy(null);
-    }
-  }
 
   const dailyPct = Math.min(100, (budget.dailyUsedUsd / budget.dailyLimitUsd) * 100);
   const monthlyPct = Math.min(100, (budget.monthlyUsedUsd / budget.monthlyLimitUsd) * 100);
@@ -191,15 +154,14 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
         )}
       </Card>
 
-      {/* Demo Mode */}
+      {/* Manual mode (pause background automation) */}
       <Card className={settings.demoMode ? "border-primary/50 bg-primary/5" : "glass"}>
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <CardTitle className="text-base">Demo Mode</CardTitle>
+              <CardTitle className="text-base">Manual Mode</CardTitle>
               <CardDescription>
-                Disables background timers. Only manual triggers (e.g. &ldquo;Inject Anomaly&rdquo; button) execute.
-                Use this during presentations to control the narrative.
+                Pauses background automation. Only manual triggers run.
               </CardDescription>
             </div>
             <Switch
@@ -383,15 +345,14 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
         </CardContent>
       </Card>
 
-      {/* Demo & Manual Triggers */}
+      {/* Manual Triggers */}
       <Card className="glass border-primary/30">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4" /> Demo & Manual Triggers
+            <Zap className="h-4 w-4" /> Manual Triggers
           </CardTitle>
           <CardDescription>
-            Use these during presentations or to validate the loop end-to-end.
-            They bypass the kill switch (manual override) but still count toward the AI budget.
+            Run the monitoring loop now. Counts toward the AI budget.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -399,18 +360,6 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
             <Button onClick={runTickNow} disabled={!!demoBusy} variant="outline">
               {demoBusy === "tick" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
               Run Tick Now
-            </Button>
-            <Button onClick={() => injectAnomaly("minor")} disabled={!!demoBusy} variant="secondary">
-              {demoBusy === "minor" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Inject Minor Anomaly
-            </Button>
-            <Button onClick={() => injectAnomaly("major")} disabled={!!demoBusy}>
-              {demoBusy === "major" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Inject Major Anomaly
-            </Button>
-            <Button onClick={() => injectAnomaly("critical")} disabled={!!demoBusy} variant="destructive">
-              {demoBusy === "critical" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Inject Critical Anomaly
             </Button>
           </div>
           {demoLog && (

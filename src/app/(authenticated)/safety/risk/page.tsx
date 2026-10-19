@@ -73,7 +73,6 @@ export default function RiskAssessmentPage() {
   const [filter,     setFilter]     = useState<Filter>("ALL");
   const [loading,    setLoading]    = useState(true);
   const [showNew,    setShowNew]    = useState(false);
-  const [simulating, setSimulating] = useState(false);
   const [sites,      setSites]      = useState<{ id: string; code: string; name: string }[]>([]);
   const [permits,    setPermits]    = useState<PermitRef[]>([]);
 
@@ -166,22 +165,8 @@ export default function RiskAssessmentPage() {
     await Promise.all([loadItems(), loadStats()]);
   }
 
-  async function simulate() {
-    if (!confirm("Create 5 sample risk assessments?")) return;
-    setSimulating(true);
-    await fetch("/api/risk-assessments/simulate", { method: "POST" });
-    await Promise.all([loadItems(), loadStats()]);
-    setSimulating(false);
-  }
 
-  async function clearSim() {
-    setSimulating(true);
-    await fetch("/api/risk-assessments/simulate", { method: "DELETE" });
-    await Promise.all([loadItems(), loadStats()]);
-    setSimulating(false);
-  }
 
-  const hasSim = items.some((i) => i.title.startsWith("[SIM-RA]"));
 
   return (
     <div className="container mx-auto max-w-5xl px-6 py-6 space-y-5">
@@ -201,19 +186,6 @@ export default function RiskAssessmentPage() {
             className="rounded-lg border border-border/40 p-2.5 text-muted-foreground hover:text-foreground">
             <RefreshCw className="h-4 w-4" />
           </button>
-          {hasSim ? (
-            <button onClick={clearSim} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-xs text-red-400 hover:bg-red-500/20 disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-              Clear Sim
-            </button>
-          ) : (
-            <button onClick={simulate} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground hover:border-primary/40 hover:text-primary disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
-              {simulating ? "Loading…" : "Simulate"}
-            </button>
-          )}
           <button onClick={() => setShowNew((v) => !v)}
             className={cn(
               "flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all",
@@ -355,15 +327,11 @@ export default function RiskAssessmentPage() {
         <div className="rounded-2xl border border-dashed border-border/50 bg-muted/5 py-16 text-center space-y-3">
           <div className="text-4xl">🛡️</div>
           <div className="font-semibold">No risk assessments yet</div>
-          <div className="text-sm text-muted-foreground max-w-sm mx-auto">Create your first assessment or load simulation data.</div>
+          <div className="text-sm text-muted-foreground max-w-sm mx-auto">Create your first risk assessment.</div>
           <div className="flex justify-center gap-2">
             <button onClick={() => setShowNew(true)}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
               <Plus className="h-4 w-4" /> New Assessment
-            </button>
-            <button onClick={simulate} disabled={simulating}
-              className="inline-flex items-center gap-2 rounded-lg border border-border/50 px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
-              <FlaskConical className="h-4 w-4" /> Simulate
             </button>
           </div>
         </div>

@@ -330,7 +330,7 @@ export function VoiceCommandButton() {
           {transcript && (
             <div className="text-sm bg-muted/50 p-2 rounded">
               <div className="text-xs text-muted-foreground mb-1">{lang === "ar" ? "قلت:" : "You said:"}</div>
-              <div dir={lang === "ar" || lang === "ur" ? "rtl" : "ltr"}>{transcript}</div>
+              <div dir={lang === "ar" ? "rtl" : "ltr"}>{transcript}</div>
             </div>
           )}
 
@@ -339,7 +339,7 @@ export function VoiceCommandButton() {
               <div className="text-xs text-primary mb-1 flex items-center gap-1">
                 <Sparkles className="h-3 w-3" /> AEGIS:
               </div>
-              <div dir={lang === "ar" || lang === "ur" ? "rtl" : "ltr"}>
+              <div dir={lang === "ar" ? "rtl" : "ltr"}>
                 {String((response.speech as Record<string, string>)[lang] ?? (response.speech as Record<string, string>)["en"] ?? "")}
               </div>
               {response.intent === "NAVIGATE" && (
@@ -365,7 +365,7 @@ export function VoiceCommandButton() {
             return (
               <div className="text-sm bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 p-2 rounded">
                 <div className="font-medium text-xs mb-1">Error</div>
-                <div dir={lang === "ar" || lang === "ur" ? "rtl" : "ltr"} className="whitespace-pre-line text-xs leading-relaxed">{display}</div>
+                <div dir={lang === "ar" ? "rtl" : "ltr"} className="whitespace-pre-line text-xs leading-relaxed">{display}</div>
               </div>
             );
           })()}
@@ -374,8 +374,6 @@ export function VoiceCommandButton() {
             <div className="text-xs text-muted-foreground">
               {lang === "ar" && "جرّب: \"افتح خط الأنابيب\" أو \"كم حادثة اليوم\""}
               {lang === "en" && "Try: \"Open pipelines\" or \"How many incidents today\""}
-              {lang === "ur" && "آزمائیں: \"پائپ لائنز کھولیں\""}
-              {lang === "ne" && "प्रयास गर्नुहोस्: \"पाइपलाइनहरू खोल्नुहोस्\""}
             </div>
           )}
         </div>

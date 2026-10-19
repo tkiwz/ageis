@@ -130,7 +130,6 @@ export default function TasksPage() {
   const [showForm,     setShowForm]     = useState(false);
   const [submitting,   setSubmitting]   = useState(false);
   const [actionId,     setActionId]     = useState<string | null>(null); // spinner per card
-  const [simulating,   setSimulating]   = useState(false);
 
   // ── New Task form state ──────────────────────────────────
   const [fTitle,    setFTitle]    = useState("");
@@ -190,23 +189,8 @@ export default function TasksPage() {
     if (showForm) setTimeout(() => titleRef.current?.focus(), 80);
   }, [showForm]);
 
-  // ── Run / clear simulation ───────────────────────────
-  async function runSimulation() {
-    if (!confirm("This will create 11 sample tasks to demonstrate the page. Continue?")) return;
-    setSimulating(true);
-    await fetch("/api/tasks/simulate", { method: "POST" });
-    await Promise.all([loadTasks(), loadStats()]);
-    setSimulating(false);
-  }
 
-  async function clearSimulation() {
-    setSimulating(true);
-    await fetch("/api/tasks/simulate", { method: "DELETE" });
-    await Promise.all([loadTasks(), loadStats()]);
-    setSimulating(false);
-  }
 
-  const hasSimTasks = tasks.some((t) => t.title.startsWith("[SIM]"));
 
   // ── Create task ──────────────────────────────────────────
   async function handleCreate(e: React.FormEvent) {
@@ -273,34 +257,6 @@ export default function TasksPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Simulate / Clear buttons */}
-          {hasSimTasks ? (
-            <button
-              onClick={clearSimulation}
-              disabled={simulating}
-              title="Remove all simulation tasks"
-              className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-xs text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
-            >
-              {simulating
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <X className="h-3.5 w-3.5" />
-              }
-              {simulating ? "Clearing…" : "Clear Sim"}
-            </button>
-          ) : (
-            <button
-              onClick={runSimulation}
-              disabled={simulating}
-              title="Load sample tasks for demonstration"
-              className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors disabled:opacity-50"
-            >
-              {simulating
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <FlaskConical className="h-3.5 w-3.5" />
-              }
-              {simulating ? "Loading…" : "Simulate"}
-            </button>
-          )}
 
           {/* New Task button */}
           <button

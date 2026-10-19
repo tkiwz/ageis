@@ -118,9 +118,7 @@ export default function PipelineDetailPage() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [series, setSeries] = useState<ReadingSeries[]>([]);
   const [loading, setLoading] = useState(true);
-  const [simulating, setSimulating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [lastSimResult, setLastSimResult] = useState<any>(null);
   const [lastAnalysis, setLastAnalysis] = useState<any>(null);
 
   const refreshData = useCallback(async () => {
@@ -142,30 +140,6 @@ export default function PipelineDetailPage() {
     refreshData();
   }, [refreshData]);
 
-  const handleSimulate = async (severity: "MEDIUM" | "HIGH" | "CRITICAL") => {
-    setSimulating(true);
-    setLastSimResult(null);
-    setLastAnalysis(null);
-
-    try {
-      const res = await fetch(`/api/pipelines/${id}/simulate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ severity }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setLastSimResult(data.data);
-        await refreshData();
-      } else {
-        alert("Simulation failed: " + (data.error?.message || "Unknown error"));
-      }
-    } catch (err: any) {
-      alert("Simulation error: " + err.message);
-    } finally {
-      setSimulating(false);
-    }
-  };
 
   const handleAnalyze = async () => {
     setAnalyzing(true);
@@ -303,66 +277,13 @@ export default function PipelineDetailPage() {
                 <span className="text-xs text-muted-foreground"></span>
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                Simulate a pressure anomaly, then run AEGIS AI analysis to detect it in real-time
+                Run AEGIS AI analysis on the latest pressure readings
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Step 1: Simulate */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="h-4 w-4" style={{ color: COLORS.accent }} />
-                <span className="text-sm font-semibold"> Simulate Pressure Anomaly</span>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <Button
-                  onClick={() => handleSimulate("MEDIUM")}
-                  disabled={simulating || analyzing}
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/50"
-                >
-                  {simulating ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="text-amber-400">●</span>}
-                  Medium
-                </Button>
-                <Button
-                  onClick={() => handleSimulate("HIGH")}
-                  disabled={simulating || analyzing}
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300 hover:border-orange-500/50"
-                >
-                  {simulating ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="text-orange-400">●</span>}
-                  High
-                </Button>
-                <Button
-                  onClick={() => handleSimulate("CRITICAL")}
-                  disabled={simulating || analyzing}
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 hover:border-red-500/50"
-                >
-                  {simulating ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="text-red-400">●</span>}
-                  Critical
-                </Button>
-              </div>
-              {lastSimResult && (
-                <div className="text-xs bg-background/50 border border-border/50 px-3 py-2.5 rounded-md">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
-                    <div className="text-foreground/80">
-                      Simulated <strong className="text-foreground">{lastSimResult.simulation.severity}</strong> anomaly at{" "}
-                      <strong className="text-cyan-400">{lastSimResult.targetPoint.code}</strong>{" "}
-                      (km {lastSimResult.targetPoint.positionKm.toFixed(1)}). Pressure dropped{" "}
-                      {lastSimResult.simulation.dropMagnitude} bar over 90 minutes.
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Step 2: Analyze */}
+          <div className="grid grid-cols-1 gap-5">
+            {/* Analyze */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Brain className="h-4 w-4" style={{ color: COLORS.primary }} />
@@ -370,7 +291,7 @@ export default function PipelineDetailPage() {
               </div>
               <Button
                 onClick={handleAnalyze}
-                disabled={simulating || analyzing}
+                disabled={analyzing}
                 className="w-full text-white border-0 shadow-md transition-all hover:shadow-cyan-500/20"
                 style={{
                   background: analyzing

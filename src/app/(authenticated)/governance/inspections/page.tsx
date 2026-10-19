@@ -54,7 +54,6 @@ export default function InspectionsPage() {
   const [items,      setItems]      = useState<Inspection[]>([]);
   const [filter,     setFilter]     = useState<Filter>("ALL");
   const [loading,    setLoading]    = useState(true);
-  const [simulating, setSimulating] = useState(false);
   const [creating,   setCreating]   = useState<string | null>(null);   // inspectionId being processed
   const [created,    setCreated]    = useState<CreatedMap>({});         // inspectionId → incidentId
 
@@ -78,20 +77,7 @@ export default function InspectionsPage() {
     fraud:      items.filter((i) => i.fraudDetected).length,
   };
 
-  async function simulate() {
-    if (!confirm("Create sample inspection records?")) return;
-    setSimulating(true);
-    await fetch("/api/inspections/simulate", { method: "POST" });
-    await loadItems();
-    setSimulating(false);
-  }
 
-  async function clearSim() {
-    setSimulating(true);
-    await fetch("/api/inspections/simulate", { method: "DELETE" });
-    await loadItems();
-    setSimulating(false);
-  }
 
   async function createIncident(ins: Inspection) {
     setCreating(ins.id);
@@ -106,7 +92,6 @@ export default function InspectionsPage() {
     }
   }
 
-  const hasSim = items.some((i) => i.title.startsWith("[SIM-INS]"));
 
   return (
     <div className="container mx-auto max-w-5xl px-6 py-6 space-y-5">
@@ -123,18 +108,6 @@ export default function InspectionsPage() {
           <button onClick={loadItems} className="rounded-lg border border-border/40 p-2.5 text-muted-foreground hover:text-foreground">
             <RefreshCw className="h-4 w-4" />
           </button>
-          {hasSim ? (
-            <button onClick={clearSim} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-xs text-red-400 hover:bg-red-500/20 disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />} Clear Sim
-            </button>
-          ) : (
-            <button onClick={simulate} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground hover:border-primary/40 hover:text-primary disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
-              {simulating ? "Loading…" : "Simulate"}
-            </button>
-          )}
         </div>
       </div>
 
@@ -168,11 +141,7 @@ export default function InspectionsPage() {
         <div className="rounded-2xl border border-dashed border-border/50 bg-muted/5 py-16 text-center space-y-3">
           <div className="text-4xl">🔍</div>
           <div className="font-semibold">No inspections yet</div>
-          <div className="text-sm text-muted-foreground">Load simulation data to see the inspection system in action.</div>
-          <button onClick={simulate} disabled={simulating}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-            <FlaskConical className="h-4 w-4" /> Simulate
-          </button>
+          <div className="text-sm text-muted-foreground">Schedule your first inspection to get started.</div>
         </div>
       ) : (
         <div className="space-y-2.5">

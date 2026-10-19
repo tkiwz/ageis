@@ -80,7 +80,6 @@ export default function InvestigationsPage() {
   const [filter,      setFilter]      = useState<Filter>("ALL");
   const [loading,     setLoading]     = useState(true);
   const [showNew,     setShowNew]     = useState(false);
-  const [simulating,  setSimulating]  = useState(false);
 
   // ── Form state ────────────────────────────────────────────
   const [selIncident, setSelIncident] = useState("");
@@ -137,22 +136,8 @@ export default function InvestigationsPage() {
     setCreating(false);
   }
 
-  async function simulate() {
-    if (!confirm("Create 3 sample investigations with AI analysis?")) return;
-    setSimulating(true);
-    await fetch("/api/investigations/simulate", { method: "POST" });
-    await Promise.all([loadList(), loadStats()]);
-    setSimulating(false);
-  }
 
-  async function clearSim() {
-    setSimulating(true);
-    await fetch("/api/investigations/simulate", { method: "DELETE" });
-    await Promise.all([loadList(), loadStats()]);
-    setSimulating(false);
-  }
 
-  const hasSim = items.some((i) => i.incident.title.startsWith("[SIM-INV]"));
 
   return (
     <div className="container mx-auto max-w-5xl px-6 py-6 space-y-5">
@@ -174,19 +159,6 @@ export default function InvestigationsPage() {
             <RefreshCw className="h-4 w-4" />
           </button>
 
-          {hasSim ? (
-            <button onClick={clearSim} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-xs text-red-400 hover:bg-red-500/20 disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-              Clear Sim
-            </button>
-          ) : (
-            <button onClick={simulate} disabled={simulating}
-              className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground hover:border-primary/40 hover:text-primary disabled:opacity-50">
-              {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
-              {simulating ? "Loading…" : "Simulate"}
-            </button>
-          )}
 
           <button onClick={() => setShowNew((v) => !v)}
             className={cn(
@@ -218,9 +190,6 @@ export default function InvestigationsPage() {
           {openInc.length === 0 ? (
             <div className="rounded-lg border border-border/30 bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
               No incidents without an investigation. All incidents have investigations or no incidents exist yet.
-              <button onClick={simulate} disabled={simulating} className="ml-2 text-primary hover:underline text-xs">
-                Load simulation data
-              </button>
             </div>
           ) : (
             <form onSubmit={handleCreate} className="space-y-3">
@@ -294,16 +263,12 @@ export default function InvestigationsPage() {
           <div className="text-4xl">🔍</div>
           <div className="font-semibold">No investigations yet</div>
           <div className="text-sm text-muted-foreground max-w-sm mx-auto">
-            Open an investigation from an existing incident, or load simulation data to see how it works.
+            Open an investigation from an existing incident.
           </div>
           <div className="flex justify-center gap-2">
             <button onClick={() => setShowNew(true)}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
               <Plus className="h-4 w-4" /> New Investigation
-            </button>
-            <button onClick={simulate} disabled={simulating}
-              className="inline-flex items-center gap-2 rounded-lg border border-border/50 px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
-              <FlaskConical className="h-4 w-4" /> Simulate
             </button>
           </div>
         </div>
