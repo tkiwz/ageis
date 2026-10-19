@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { Inter, IBM_Plex_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
@@ -21,9 +21,10 @@ const plexArabic = IBM_Plex_Sans_Arabic({
   display: "swap",
 });
 
-const jetbrains = JetBrains_Mono({
+const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  variable: "--font-jetbrains",
+  weight: ["400", "500"],
+  variable: "--font-mono",
   display: "swap",
 });
 
@@ -44,7 +45,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport = {
-  themeColor: "#00d4d8",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0F1115" },
+    { media: "(prefers-color-scheme: light)", color: "#F5F5F7" },
+  ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -59,7 +63,7 @@ export default async function RootLayout({
       lang={locale}
       dir={dirOf(locale)}
       suppressHydrationWarning
-      className={`${inter.variable} ${plexArabic.variable} ${jetbrains.variable} dark`}
+      className={`${inter.variable} ${plexArabic.variable} ${plexMono.variable}`}
     >
       <body className="font-sans antialiased">
         {/* Register PWA service worker — silent if blocked */}
@@ -88,7 +92,7 @@ export default async function RootLayout({
         />
         <I18nProvider locale={locale} messages={getMessages(locale)}>
           <AuthProvider>
-            <ThemeProvider attribute="class" defaultTheme="dark">
+            <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
               {children}
               <Toaster richColors position={locale === "ar" ? "top-left" : "top-right"} />
             </ThemeProvider>

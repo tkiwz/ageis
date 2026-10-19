@@ -3,6 +3,7 @@ import { DEFAULT_LOCALE, LOCALE_COOKIE, isLocale, type Locale } from "./config";
 import { createT } from "./translate";
 import { en } from "./messages/en";
 import { ar } from "./messages/ar";
+// Server-only module (reads cookies via next/headers).
 
 export async function getLocale(): Promise<Locale> {
   const v = (await cookies()).get(LOCALE_COOKIE)?.value;

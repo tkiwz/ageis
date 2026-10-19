@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { LOCALE_COOKIE, dirOf, type Locale } from "./config";
-import { createT, type TFunction } from "./translate";
+import { createT, formatDate, formatDateTime, formatNumber, formatRelative, formatTime, tEnum, type TFunction } from "./translate";
 import type { Messages } from "./messages/en";
 
 interface I18nValue {
@@ -43,4 +43,20 @@ export function useI18n(): I18nValue {
 /** Shortcut: const t = useT(); */
 export function useT(): TFunction {
   return useI18n().t;
+}
+
+/** Locale-bound formatters: const f = useFormat(); f.date(x), f.relative(x), f.enum("status", v) */
+export function useFormat() {
+  const { locale, t } = useI18n();
+  return useMemo(
+    () => ({
+      date: (d: Date | string | number, o?: Intl.DateTimeFormatOptions) => formatDate(d, locale, o),
+      dateTime: (d: Date | string | number) => formatDateTime(d, locale),
+      time: (d: Date | string | number) => formatTime(d, locale),
+      relative: (d: Date | string | number) => formatRelative(d, locale),
+      number: (n: number, o?: Intl.NumberFormatOptions) => formatNumber(n, locale, o),
+      enum: (group: Parameters<typeof tEnum>[1], v: string | null | undefined) => tEnum(t, group, v),
+    }),
+    [locale, t],
+  );
 }

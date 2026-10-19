@@ -17,3 +17,6 @@ export function dirOf(locale: Locale): "rtl" | "ltr" {
 export function intlTag(locale: Locale): string {
   return locale === "ar" ? "ar-OM-u-nu-latn" : "en-GB";
 }
+
+/** All operational times are shown in Gulf Standard Time. */
+export const TIME_ZONE = "Asia/Muscat";

@@ -2,110 +2,151 @@
 @tailwind components;
 @tailwind utilities;
 
-/* AEGIS — Dark Command Center Theme */
+/*
+ * AEGIS design tokens — calm technical (spec 2026-10-19 v2, ADR-004).
+ * Components use these tokens only; never raw palette classes or hex.
+ * Text contrast: all foreground/severity colours ≥ 4.5:1 on background and card.
+ */
 
 @layer base {
   :root {
-    --radius: 0.5rem;
+    --radius: 0.625rem; /* 10px controls; cards use rounded-xl (14px) */
+
+    /* Light (default for light mode / field use) */
+    --background: 240 11% 96%;
+    --foreground: 240 3% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 3% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 3% 12%;
+    --surface-2: 225 13% 97%;
+    --primary: 224 65% 51%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 225 13% 94%;
+    --secondary-foreground: 240 3% 12%;
+    --muted: 225 13% 94%;
+    --muted-foreground: 215 9% 41%;
+    --accent: 218 31% 95%;
+    --accent-foreground: 240 3% 12%;
+    --border: 216 10% 90%;
+    --input: 218 11% 86%;
+    --ring: 224 65% 51%;
+
+    --info: 217 68% 45%;
+    --success: 146 52% 28%;
+    --warning: 41 80% 29%;
+    --danger: 2 62% 43%;
+    --destructive: 2 62% 43%;
+    --destructive-foreground: 0 0% 100%;
+    --risk-low: 146 52% 28%;
+    --risk-medium: 41 80% 29%;
+    --risk-high: 26 83% 35%;
+    --risk-critical: 2 62% 43%;
+
+    --chart-1: 224 65% 51%;
+    --chart-2: 146 52% 33%;
+    --chart-3: 41 80% 40%;
+    --chart-4: 26 83% 45%;
+    --chart-5: 265 45% 52%;
+    --chart-6: 190 60% 38%;
+
+    --shadow-card: 0 1px 2px rgb(16 18 22 / 0.04), 0 4px 16px rgb(16 18 22 / 0.04);
+    --shadow-pop: 0 8px 28px rgb(16 18 22 / 0.12), 0 2px 6px rgb(16 18 22 / 0.06);
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
   }
 
   .dark {
-    --background: 222 47% 5%;
-    --foreground: 213 31% 91%;
-    --card: 222 47% 8%;
-    --card-foreground: 213 31% 91%;
-    --popover: 222 47% 8%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 188 95% 56%;
-    --primary-foreground: 222 47% 5%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 213 31% 91%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 213 31% 91%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 213 31% 91%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 188 95% 56%;
-    --risk-low: 142 76% 45%;
-    --risk-medium: 38 92% 50%;
-    --risk-high: 25 95% 53%;
-    --risk-critical: 0 84% 60%;
-  }
+    --background: 220 17% 7%;
+    --foreground: 220 19% 94%;
+    --card: 220 16% 11%;
+    --card-foreground: 220 19% 94%;
+    --popover: 220 17% 14%;
+    --popover-foreground: 220 19% 94%;
+    --surface-2: 220 17% 14%;
+    --primary: 220 83% 65%;
+    --primary-foreground: 220 17% 7%;
+    --secondary: 220 17% 14%;
+    --secondary-foreground: 220 19% 94%;
+    --muted: 220 17% 14%;
+    --muted-foreground: 215 9% 58%;
+    --accent: 219 18% 15%;
+    --accent-foreground: 220 19% 94%;
+    --border: 217 15% 17%;
+    --input: 216 15% 20%;
+    --ring: 220 86% 73%;
 
-  :root:not(.dark) {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 5%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 5%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 5%;
-    --primary: 188 95% 36%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 5%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 20% 45%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 5%;
-    --destructive: 0 84% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 188 95% 36%;
-    --risk-low: 142 76% 36%;
-    --risk-medium: 38 92% 40%;
-    --risk-high: 25 95% 45%;
-    --risk-critical: 0 84% 50%;
+    --info: 216 99% 71%;
+    --success: 143 38% 59%;
+    --warning: 38 70% 62%;
+    --danger: 3 75% 60%;
+    --destructive: 3 75% 60%;
+    --destructive-foreground: 220 17% 7%;
+    --risk-low: 143 38% 59%;
+    --risk-medium: 38 70% 62%;
+    --risk-high: 28 76% 57%;
+    --risk-critical: 3 75% 60%;
+
+    --chart-1: 220 83% 65%;
+    --chart-2: 143 38% 59%;
+    --chart-3: 38 70% 62%;
+    --chart-4: 28 76% 57%;
+    --chart-5: 265 60% 72%;
+    --chart-6: 190 55% 60%;
+
+    --shadow-card: none;
+    --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.45);
   }
 }
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground antialiased; }
-  html { font-feature-settings: "rlig" 1, "calt" 1; }
+  html { font-feature-settings: "rlig" 1, "calt" 1; -webkit-font-smoothing: antialiased; }
+  body { @apply bg-background text-foreground; }
+  /* Latin headings slightly tight; Arabic never letter-spaced */
+  :lang(en) h1, :lang(en) h2, :lang(en) h3 { letter-spacing: -0.01em; }
+  :lang(ar) body { line-height: 1.65; }
+  :lang(ar) * { letter-spacing: 0 !important; }
+  ::selection { background: hsl(var(--primary) / 0.2); }
+  :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 }
 
 @layer utilities {
-  .bg-grid {
-    background-image:
-      linear-gradient(to right, hsl(var(--primary) / 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, hsl(var(--primary) / 0.04) 1px, transparent 1px);
-    background-size: 40px 40px;
+  /* Card elevation: hairline + soft shadow in light, surface step in dark */
+  .surface-card { background: hsl(var(--card)); box-shadow: var(--shadow-card); }
+
+  /* Apple-like translucent material — header and sidebar only */
+  .material {
+    background: hsl(var(--background) / 0.78);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
   }
 
-  .glass {
-    background: hsl(var(--card) / 0.7);
-    backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
-  }
+  /* Legacy names kept neutral while pages migrate (audit flags new usage) */
+  .glass { background: hsl(var(--card)); box-shadow: var(--shadow-card); }
+  .bg-grid { background: none; }
+  .glow-low, .glow-medium, .glow-high, .glow-critical, .glow-primary { box-shadow: none; }
 
-  .glow-low      { box-shadow: 0 0 12px hsl(var(--risk-low) / 0.4); }
-  .glow-medium   { box-shadow: 0 0 12px hsl(var(--risk-medium) / 0.4); }
-  .glow-high     { box-shadow: 0 0 12px hsl(var(--risk-high) / 0.4); }
-  .glow-critical { box-shadow: 0 0 16px hsl(var(--risk-critical) / 0.6); }
-  .glow-primary  { box-shadow: 0 0 12px hsl(var(--primary) / 0.4); }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 9999px; flex-shrink: 0; }
+  .status-online  { background: hsl(var(--success)); }
+  .status-warning { background: hsl(var(--warning)); }
+  .status-offline { background: hsl(var(--danger)); }
 
-  .status-dot {
-    display: inline-block;
-    width: 8px; height: 8px; border-radius: 50%;
-  }
-  .status-online   { background: hsl(var(--risk-low)); box-shadow: 0 0 6px hsl(var(--risk-low) / 0.6); }
-  .status-warning  { background: hsl(var(--risk-medium)); box-shadow: 0 0 6px hsl(var(--risk-medium) / 0.6); }
-  .status-offline  { background: hsl(var(--risk-critical)); box-shadow: 0 0 6px hsl(var(--risk-critical) / 0.6); }
+  /* Numbers: tabular, same family as text */
+  .num { font-variant-numeric: tabular-nums lining-nums; }
+}
 
-  .num {
-    font-variant-numeric: tabular-nums;
-    font-family: var(--font-jetbrains, ui-monospace, monospace);
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
+.recharts-text, .leaflet-container { font-family: inherit; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--primary) / 0.2);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary) / 0.4); }
+::-webkit-scrollbar-thumb { background: hsl(var(--foreground) / 0.14); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--foreground) / 0.24); }
