@@ -103,6 +103,6 @@ Respond ONLY with the JSON structure specified.`;
 
     return ok({ analysis, message: "Analysis complete" });
   } catch (err) {
-    return fail("AI_FAILED", err instanceof Error ? err.message : "AI analysis failed", 500);
+    return fail("AI_FAILED", "Request failed. Try again later.", 500);
   }
 }

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
+import { pipelineUpdateSchema, zodMessage } from "@/lib/validations/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   } catch (error: any) {
     console.error("Pipeline GET error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }
 
@@ -59,7 +60,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const hidden = await denyUnlessSiteVisible("pipeline", id);
     if (hidden) return hidden;
-    const body = await req.json();
+    const parsed = pipelineUpdateSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return fail("VALIDATION", zodMessage(parsed.error), 400);
+    const body = parsed.data;
 
     const pipeline = await db.pipeline.update({
       where: { id },
@@ -75,7 +78,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return ok({ pipeline });
   } catch (error: any) {
     console.error("Pipeline PUT error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }
 
@@ -94,6 +97,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return ok({ success: true });
   } catch (error: any) {
     console.error("Pipeline DELETE error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

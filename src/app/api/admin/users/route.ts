@@ -14,6 +14,7 @@ export async function GET() {
   if (session.user.role !== "ADMIN") return forbidden();
 
   const users = await db.user.findMany({
+    take: 500,
     select: {
       id: true, email: true, name: true, role: true, department: true,
       phone: true, isActive: true, lastLoginAt: true, createdAt: true,

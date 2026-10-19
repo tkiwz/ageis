@@ -40,6 +40,7 @@ export async function GET() {
     db.loginAttempt.count({ where: { success: true, createdAt: { gte: last7d } } }),
     db.loginAttempt.count({ where: { success: false, createdAt: { gte: last7d } } }),
     db.accountLockout.findMany({
+      take: 500,
       where: { OR: [{ lockedUntil: { gt: now } }, { failCount: { gt: 0 } }] },
       orderBy: { lastFailAt: "desc" },
     }),

@@ -148,6 +148,6 @@ Respond with this exact JSON:
     });
   } catch (err: any) {
     console.error("[point-analysis]", err);
-    return fail("INTERNAL_ERROR", err.message || "Analysis failed", 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

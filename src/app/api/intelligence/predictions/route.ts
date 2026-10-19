@@ -40,6 +40,7 @@ export async function GET() {
 
   // Sites with active incidents
   const sites = await db.site.findMany({
+    take: 500,
     include: {
       _count: { select: { incidents: { where: { status: { in: ["REPORTED", "INVESTIGATING"] } } } } },
     },

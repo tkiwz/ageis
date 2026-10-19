@@ -189,6 +189,6 @@ export async function POST(
     });
   } catch (error: any) {
     console.error("Pipeline simulate error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

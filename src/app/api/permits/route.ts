@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (scope instanceof NextResponse) return scope;
 
   const url = new URL(req.url);
-  const limit = parseInt(url.searchParams.get("limit") ?? "50", 10);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
   const status = url.searchParams.get("status");
   const mine = url.searchParams.get("mine") === "1";
 

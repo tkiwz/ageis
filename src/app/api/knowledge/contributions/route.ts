@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
   // Enrich with contributor info
   const ids = Array.from(new Set(contribs.map((c) => c.contributorId)));
   const users = await db.user.findMany({
+    take: 500,
     where: { id: { in: ids } },
     select: { id: true, name: true, email: true, role: true },
   });

@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     const status = searchParams.get("status");
 
     const devices = await db.ioTDevice.findMany({
+      take: 500,
       where: {
         ...scope.where("siteId"),
         ...(siteId && { siteId }),

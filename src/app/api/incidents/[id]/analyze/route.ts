@@ -85,7 +85,7 @@ Respond ONLY with the JSON object.`;
 
     analysis = JSON.parse(cleaned);
   } catch (err) {
-    return fail("AI_ERROR", err instanceof Error ? err.message : "Analysis failed", 500);
+    return fail("AI_ERROR", "Request failed. Try again later.", 500);
   }
 
   // Save to DB

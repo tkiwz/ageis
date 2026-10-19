@@ -12,6 +12,7 @@ export async function GET(_req: NextRequest) {
   const scope = await requireScopedAuth();
   if (scope instanceof Response) return scope;
   const devices = await db.fieldDevice.findMany({
+    take: 500,
     where: scope.where("siteId"),
     include: {
       site: { select: { id: true, code: true, name: true } },

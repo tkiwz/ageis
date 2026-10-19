@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { requireScopedAuth } from "@/lib/scoped-auth";
+import { alertCreateSchema, zodMessage } from "@/lib/validations/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
+  const denied = await denyUnlessRole(ROLE_GROUPS.FIELD);
   if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
@@ -75,9 +76,9 @@ export async function POST(req: NextRequest) {
     return fail("INVALID_BODY", "Invalid JSON", 400);
   }
 
-  if (!body.type || !body.title || !body.message) {
-    return fail("MISSING_FIELDS", "type, title, message required", 400);
-  }
+  const parsed = alertCreateSchema.safeParse(body);
+  if (!parsed.success) return fail("VALIDATION", zodMessage(parsed.error), 400);
+  body = parsed.data;
 
   const alert = await db.alert.create({
     data: {

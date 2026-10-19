@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       analyzed.push({
         ...hit,
-        error: err instanceof Error ? err.message : "Unknown error",
+        error: "Analysis failed",
       });
     }
   }

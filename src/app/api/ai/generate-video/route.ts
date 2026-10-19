@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     videoPrompt = result.content.trim();
     console.log("[veo] prompt:", videoPrompt.slice(0, 200) + "...");
   } catch (err) {
-    return fail("PROMPT_FAILED", err instanceof Error ? err.message : String(err), 500);
+    return fail("PROMPT_FAILED", "Request failed. Try again later.", 500);
   }
 
   if (!GOOGLE_API_KEY) {
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
   try {
     operationName = await submitToVeo(videoPrompt);
   } catch (err) {
-    return fail("VIDEO_FAILED", err instanceof Error ? err.message : String(err), 500);
+    return fail("VIDEO_FAILED", "Request failed. Try again later.", 500);
   }
 
   // Extract just the operation ID (last segment) — clean URL-safe value

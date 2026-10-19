@@ -518,6 +518,6 @@ ${analysis.summary}`;
     });
   } catch (error: any) {
     console.error("[Pipeline Analysis] FATAL:", error);
-    return fail("INTERNAL_ERROR", error.message || "Analysis failed", 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

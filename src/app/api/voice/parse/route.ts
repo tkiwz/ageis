@@ -264,6 +264,7 @@ async function executeQuery(queryType: string): Promise<unknown> {
       return { count: await db.emergencyEvent.count({ where: { status: "ACTIVE" } }) };
     case "list_pipelines": {
       const pipelines = await db.pipeline.findMany({
+        take: 500,
         select: { code: true, name: true, status: true, length: true },
       });
       return { pipelines, count: pipelines.length };

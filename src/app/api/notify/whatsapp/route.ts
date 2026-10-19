@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
+import { whatsappSchema, zodMessage } from "@/lib/validations/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,9 +32,9 @@ export async function POST(req: NextRequest) {
     return fail("INVALID_BODY", "Invalid JSON", 400);
   }
 
-  if (!body.message?.trim()) {
-    return fail("MISSING_FIELDS", "message required", 400);
-  }
+  const parsed = whatsappSchema.safeParse(body);
+  if (!parsed.success) return fail("VALIDATION", zodMessage(parsed.error), 400);
+  body = parsed.data;
 
   const url =
     `https://api.callmebot.com/whatsapp.php` +
@@ -53,6 +54,6 @@ export async function POST(req: NextRequest) {
     console.log("[whatsapp notify] sent ✓");
     return ok({ sent: true });
   } catch (err) {
-    return fail("FETCH_ERROR", err instanceof Error ? err.message : String(err), 500);
+    return fail("FETCH_ERROR", "Request failed. Try again later.", 500);
   }
 }

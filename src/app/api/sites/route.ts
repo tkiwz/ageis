@@ -13,6 +13,7 @@ export async function GET() {
   // Restrict the visible site list to ones the user has access to.
   const where = scope.where("id"); // Site.id (not siteId here)
   const sites = await db.site.findMany({
+    take: 500,
     where,
     orderBy: { name: "asc" },
     include: {

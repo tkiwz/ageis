@@ -10,6 +10,7 @@ export async function GET() {
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const rules = await db.rule.findMany({
+    take: 500,
     orderBy: [{ createdAt: "desc" }],
   });
 

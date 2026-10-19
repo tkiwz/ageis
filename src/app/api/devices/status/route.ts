@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
   const [esp32Devices, rpiDevices, recentAlerts] = await Promise.all([
     // ESP32 devices with last telemetry
     db.fieldDevice.findMany({
+      take: 500,
       where:   { type: "ESP32_WEARABLE" },
       include: {
         telemetry: {
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
 
     // Raspberry Pi devices with last detection
     db.fieldDevice.findMany({
+      take: 500,
       where:   { type: "PI_VISION" },
       include: {
         visionDetections: {

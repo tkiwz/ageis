@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get("userId");
   const where = userId ? { userId } : {};
   const grants = await db.userSiteAccess.findMany({
+    take: 500,
     where,
     orderBy: { createdAt: "desc" },
   });
@@ -22,8 +23,10 @@ export async function GET(req: NextRequest) {
   const userIds = Array.from(new Set(grants.map((g) => g.userId)));
   const siteIds = Array.from(new Set(grants.map((g) => g.siteId)));
   const [users, sites] = await Promise.all([
-    db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true, role: true } }),
-    db.site.findMany({ where: { id: { in: siteIds } }, select: { id: true, code: true, name: true, nameAr: true } }),
+    db.user.findMany({
+      take: 500, where: { id: { in: userIds } }, select: { id: true, name: true, email: true, role: true } }),
+    db.site.findMany({
+      take: 500, where: { id: { in: siteIds } }, select: { id: true, code: true, name: true, nameAr: true } }),
   ]);
   const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
   const siteMap = Object.fromEntries(sites.map((s) => [s.id, s]));

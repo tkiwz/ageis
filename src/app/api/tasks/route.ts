@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
   // ── ?members=1 — return assignable users ───────────────────
   if (sp.get("members") === "1") {
     const users = await db.user.findMany({
+      take: 500,
       where:   { isActive: true },
       select:  { id: true, name: true, role: true },
       orderBy: { name: "asc" },

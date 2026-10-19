@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { requireScopedAuth } from "@/lib/scoped-auth";
+import { pipelineCreateSchema, zodMessage } from "@/lib/validations/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
     if (productType) where.productType = productType;
 
     const pipelines = await db.pipeline.findMany({
+      take: 500,
       where,
       orderBy: { code: "asc" },
       include: {
@@ -61,7 +63,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Pipelines GET error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }
 
@@ -73,7 +75,9 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   try {
-    const body = await req.json();
+    const parsed = pipelineCreateSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return fail("VALIDATION", zodMessage(parsed.error), 400);
+    const body = parsed.data;
 
     const pipeline = await db.pipeline.create({
       data: {
@@ -103,6 +107,6 @@ export async function POST(req: NextRequest) {
     return ok({ pipeline });
   } catch (error: any) {
     console.error("Pipeline POST error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

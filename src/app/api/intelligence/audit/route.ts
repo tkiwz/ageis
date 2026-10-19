@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const url = new URL(req.url);
-  const limit = parseInt(url.searchParams.get("limit") ?? "100", 10);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 200);
   const type = url.searchParams.get("type");
   const provider = url.searchParams.get("provider");
 

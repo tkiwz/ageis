@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
   const status = req.nextUrl.searchParams.get("status");
   const label = req.nextUrl.searchParams.get("label");
-  const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? "50", 10);
+  const limit = Math.min(parseInt(req.nextUrl.searchParams.get("limit") ?? "50", 10) || 50, 200);
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;

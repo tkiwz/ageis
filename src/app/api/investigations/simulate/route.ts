@@ -84,6 +84,7 @@ export async function POST() {
 
   // Remove previous sim investigations
   const simIncidents = await db.incident.findMany({
+    take: 500,
     where: { title: { startsWith: SIM_TAG } },
     select: { id: true },
   });
@@ -154,6 +155,7 @@ export async function DELETE() {
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401) as unknown as Response;
 
   const simIncidents = await db.incident.findMany({
+    take: 500,
     where: { title: { startsWith: SIM_TAG } },
     select: { id: true },
   });

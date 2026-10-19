@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   } else if (!scope.unrestricted && Array.isArray(scope.siteScope)) {
     // Find users whose UserSiteAccess intersects this manager's scope.
     const grants = await db.userSiteAccess.findMany({
+      take: 500,
       where: { siteId: { in: scope.siteScope } },
       select: { userId: true },
     });
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
 
   const userIds = Array.from(new Set(alerts.map((a) => a.userId)));
   const users = await db.user.findMany({
+    take: 500,
     where: { id: { in: userIds } },
     select: { id: true, name: true, email: true, role: true },
   });

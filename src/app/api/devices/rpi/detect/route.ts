@@ -181,6 +181,7 @@ export async function GET(req: NextRequest) {
   }
 
   const devices = await db.fieldDevice.findMany({
+    take: 500,
     where:   { type: "PI_VISION" },
     include: {
       visionDetections: {

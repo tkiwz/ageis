@@ -22,6 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const since = new Date(Date.now() - hours * 3600000);
 
     const points = await db.pressurePoint.findMany({
+      take: 500,
       where: { pipelineId: id },
       orderBy: { positionKm: "asc" },
       include: {
@@ -48,6 +49,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return ok({ series, hours });
   } catch (error: any) {
     console.error("Readings GET error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

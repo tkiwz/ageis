@@ -54,7 +54,6 @@ export async function POST(req: NextRequest) {
     return ok(response);
   } catch (err) {
     console.error("[/api/ai/chat] error:", err);
-    const message = err instanceof Error ? err.message : "AI request failed";
-    return fail("AI_ERROR", message, 500);
+    return fail("AI_ERROR", "AI request failed. Try again later.", 500);
   }
 }

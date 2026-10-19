@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
-import { piGetStats, piPing } from "@/lib/devices/pi-client";
+import { piBaseUrl, piGetStats, piPing } from "@/lib/devices/pi-client";
 import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const runtime = "nodejs";
@@ -38,6 +38,11 @@ export async function POST(req: NextRequest) {
   }
 
   const port = body.port ?? 5000;
+  try {
+    piBaseUrl({ ipAddress: body.ipAddress, port });
+  } catch {
+    return fail("INVALID_ADDRESS", "Invalid device address or port", 400);
+  }
 
   // Test connection
   const online = await piPing({ ipAddress: body.ipAddress, port });

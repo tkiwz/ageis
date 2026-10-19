@@ -214,6 +214,7 @@ export async function GET(req: NextRequest) {
 
   // Return all ESP32 devices + latest reading
   const devices = await db.fieldDevice.findMany({
+    take: 500,
     where:   { type: "ESP32_WEARABLE" },
     include: {
       telemetry: {

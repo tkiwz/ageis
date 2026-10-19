@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     if (severity) where.severity = severity;
 
     const leaks = await db.leakAlert.findMany({
+      take: 500,
       where,
       orderBy: { detectedAt: "desc" },
       include: {
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Leaks GET error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }
 
@@ -88,6 +89,6 @@ export async function PATCH(req: NextRequest) {
     return ok({ leak });
   } catch (error: any) {
     console.error("Leaks PATCH error:", error);
-    return fail("INTERNAL_ERROR", error.message, 500);
+    return fail("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

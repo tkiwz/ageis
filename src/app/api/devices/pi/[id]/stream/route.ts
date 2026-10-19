@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { piBaseUrl } from "@/lib/devices/pi-client";
+import { fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { requireScopedAuth } from "@/lib/scoped-auth";
 import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
@@ -33,7 +35,12 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   const port = device.port ?? 5000;
-  const piUrl = `http://${device.ipAddress}:${port}/video_feed`;
+  let piUrl: string;
+  try {
+    piUrl = `${piBaseUrl({ ipAddress: device.ipAddress, port })}/video_feed`;
+  } catch {
+    return fail("INVALID_ADDRESS", "Invalid device address", 400);
+  }
 
   try {
     const upstream = await fetch(piUrl, {
