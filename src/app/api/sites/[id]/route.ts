@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,10 @@ export async function GET(
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("site", id);
+
+  if (hidden) return hidden;
   const site = await db.site.findUnique({ where: { id } });
   if (!site) return fail("NOT_FOUND", "Site not found", 404);
 
@@ -31,6 +36,10 @@ export async function PUT(
   }
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("site", id);
+
+  if (hidden) return hidden;
   const body = await req.json().catch(() => null);
   if (!body) return fail("INVALID_BODY", "Invalid JSON", 400);
 
@@ -65,6 +74,10 @@ export async function DELETE(
   }
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("site", id);
+
+  if (hidden) return hidden;
   try {
     await db.site.delete({ where: { id } });
     return ok({ message: "Site deleted successfully" });

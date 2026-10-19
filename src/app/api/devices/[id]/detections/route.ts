@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { requireScopedAuth } from "@/lib/scoped-auth";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("device", id);
+
+  if (hidden) return hidden;
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "30", 10) || 30, 100);
 

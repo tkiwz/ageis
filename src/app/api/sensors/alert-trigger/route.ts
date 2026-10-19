@@ -19,6 +19,8 @@ import { NextRequest }   from "next/server";
 import { auth }          from "@/auth";
 import { ok, fail }      from "@/lib/api-response";
 import { db }            from "@/lib/db";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +37,8 @@ async function sendWhatsApp(message: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 

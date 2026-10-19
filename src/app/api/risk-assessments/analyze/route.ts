@@ -8,12 +8,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { ok, fail }                  from "@/lib/api-response";
 import { requireScopedAuth }         from "@/lib/scoped-auth";
 import { claudeChat }                from "@/lib/ai/claude-client";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime     = "nodejs";
 export const dynamic     = "force-dynamic";
 export const maxDuration = 45;
 
 export async function POST(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SUPERVISE);
+  if (denied) return denied;
   const scope = await requireScopedAuth();
   if (scope instanceof NextResponse) return scope;
 

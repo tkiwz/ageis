@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,11 +24,15 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   try {
     const { id } = await params;
+    const hidden = await denyUnlessSiteVisible("pipeline", id);
+    if (hidden) return hidden;
     const body = await req.json().catch(() => ({}));
     const severity = (body.severity || "HIGH") as "MEDIUM" | "HIGH" | "CRITICAL";
 

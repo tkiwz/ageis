@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { requireScopedAuth } from "@/lib/scoped-auth";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,10 @@ export async function GET(
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("device", id);
+
+  if (hidden) return hidden;
 
   const device = await db.fieldDevice.findUnique({ where: { id } });
   if (!device) return fail("NOT_FOUND", "Device not found", 404);

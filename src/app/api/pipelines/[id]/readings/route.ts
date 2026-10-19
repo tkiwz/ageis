@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   try {
     const { id } = await params;
+    const hidden = await denyUnlessSiteVisible("pipeline", id);
+    if (hidden) return hidden;
     const { searchParams } = new URL(req.url);
     const hours = parseInt(searchParams.get("hours") || "24");
 

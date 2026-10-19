@@ -10,6 +10,8 @@ import { NextResponse } from "next/server";
 import { auth }         from "@/auth";
 import { ok, fail }     from "@/lib/api-response";
 import { db }           from "@/lib/db";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +21,8 @@ const h    = (n: number) => new Date(Date.now() + n * 60 * 60 * 1000);
 const ago  = (n: number) => new Date(Date.now() - n * 60 * 60 * 1000);
 
 export async function DELETE() {
+  const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401) as unknown as Response;
 
@@ -27,6 +31,8 @@ export async function DELETE() {
 }
 
 export async function POST() {
+  const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401) as unknown as Response;
 

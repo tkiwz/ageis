@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { requireScopedAuth } from "@/lib/scoped-auth";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("device", id);
+
+  if (hidden) return hidden;
   const device = await db.fieldDevice.findUnique({ where: { id } });
   if (!device || !device.ipAddress) {
     return new NextResponse("Device not found", { status: 404 });

@@ -50,3 +50,13 @@ export const MODULE_ACCESS: Record<string, Role[]> = {
 export function canAccessModule(role: Role, moduleName: string): boolean {
   return MODULE_ACCESS[moduleName]?.includes(role) ?? false;
 }
+/**
+ * Role groups for API write permissions (each includes the ones above it).
+ * Used by denyUnlessRole() in route handlers.
+ */
+const MANAGE: Role[] = ["ADMIN", "HSSE_MANAGER"];
+const SAFETY: Role[] = [...MANAGE, "SAFETY_OFFICER"];
+const SUPERVISE: Role[] = [...SAFETY, "SUPERVISOR"];
+const FIELD: Role[] = [...SUPERVISE, "OPERATOR"];
+
+export const ROLE_GROUPS = { MANAGE, SAFETY, SUPERVISE, FIELD } as const;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -188,6 +190,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 

@@ -5,6 +5,9 @@ import { db } from "@/lib/db";
 import { piGetStats } from "@/lib/devices/pi-client";
 import { analyzeVisionDetection } from "@/lib/ai/decision-engine";
 import { requireScopedAuth } from "@/lib/scoped-auth";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,12 +23,18 @@ const MIN_CONFIDENCE = 0.70;
  * Returns: { recorded, analyzed, alertCreated, detection }
  */
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.FIELD);
+  if (denied) return denied;
   const scope = await requireScopedAuth();
   if (scope instanceof Response) return scope;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("device", id);
+
+  if (hidden) return hidden;
   const device = await db.fieldDevice.findUnique({
     where: { id },
     include: { site: true },

@@ -3,6 +3,9 @@ import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { claudeChat } from "@/lib/ai/claude-client";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,10 +24,16 @@ Analyze the incident and respond ONLY with valid JSON matching this schema (no m
 }`;
 
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("incident", id);
+
+  if (hidden) return hidden;
 
   const incident = await db.incident.findUnique({
     where: { id },

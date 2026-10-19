@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ok, fail }                  from "@/lib/api-response";
 import { db }                        from "@/lib/db";
 import { requireScopedAuth }         from "@/lib/scoped-auth";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +45,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
+  if (denied) return denied;
   const scope = await requireScopedAuth();
   if (scope instanceof NextResponse) return scope;
 

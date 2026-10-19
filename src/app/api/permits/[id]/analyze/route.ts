@@ -3,6 +3,9 @@ import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { claudeChat } from "@/lib/ai/claude-client";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,10 +30,16 @@ export async function POST(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SUPERVISE);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("permit", id);
+
+  if (hidden) return hidden;
 
   const permit = await db.permit.findUnique({
     where: { id },

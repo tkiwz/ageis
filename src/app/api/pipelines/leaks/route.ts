@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 import { db } from "@/lib/db";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,12 +58,20 @@ export async function GET(req: NextRequest) {
 
 // PATCH /api/pipelines/leaks
 export async function PATCH(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   try {
     const body = await req.json();
     const { id, status, resolution } = body;
+    if (typeof id !== "string") return fail("VALIDATION", "id required", 400);
+    const leakRow = await db.leakAlert.findUnique({ where: { id }, select: { pipelineId: true } });
+    if (leakRow) {
+      const hidden = await denyUnlessSiteVisible("pipeline", leakRow.pipelineId);
+      if (hidden) return hidden;
+    }
 
     const updateData: any = { status };
     if (status === "RESOLVED" || status === "FALSE_ALARM") {

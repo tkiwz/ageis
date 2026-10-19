@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +16,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   try {
     const { id } = await params;
+    const hidden = await denyUnlessSiteVisible("pipeline", id);
+    if (hidden) return hidden;
 
     const pipeline = await db.pipeline.findUnique({
       where: { id },
@@ -45,11 +50,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // PUT /api/pipelines/[id]
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   try {
     const { id } = await params;
+    const hidden = await denyUnlessSiteVisible("pipeline", id);
+    if (hidden) return hidden;
     const body = await req.json();
 
     const pipeline = await db.pipeline.update({
@@ -72,11 +81,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // DELETE /api/pipelines/[id]
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   try {
     const { id } = await params;
+    const hidden = await denyUnlessSiteVisible("pipeline", id);
+    if (hidden) return hidden;
     await db.pipeline.delete({ where: { id } });
     return ok({ success: true });
   } catch (error: any) {

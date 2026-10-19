@@ -4,6 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { piGetStats } from "@/lib/devices/pi-client";
 import { requireScopedAuth } from "@/lib/scoped-auth";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("device", id);
+
+  if (hidden) return hidden;
   const device = await db.fieldDevice.findUnique({ where: { id } });
   if (!device) return fail("NOT_FOUND", "Device not found", 404);
   if (!device.ipAddress) return fail("NO_IP", "Device has no IP address", 400);

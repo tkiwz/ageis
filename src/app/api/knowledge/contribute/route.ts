@@ -16,6 +16,8 @@ import { auth } from "@/auth";
 import { ok, fail, unauthorized } from "@/lib/api-response";
 import { ingestContribution } from "@/lib/knowledge/ingest";
 import type { ContributionSource } from "@/lib/knowledge/types";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +26,8 @@ export const maxDuration = 60;
 const VALID_SOURCES: ContributionSource[] = ["QUICK_INSIGHT", "INCIDENT_RETRO", "VOICE_MEMO"];
 
 export async function POST(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.FIELD);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return unauthorized();
 

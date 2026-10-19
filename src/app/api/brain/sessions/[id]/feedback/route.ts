@@ -13,6 +13,8 @@ import { ok, fail, unauthorized } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { recordOutcome } from "@/lib/brain/learning";
 import { log } from "@/lib/observability/logger";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +23,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return unauthorized();
 

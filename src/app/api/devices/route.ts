@@ -11,10 +11,8 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: NextRequest) {
   const scope = await requireScopedAuth();
   if (scope instanceof Response) return scope;
-  const session = await auth();
-  if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
-
   const devices = await db.fieldDevice.findMany({
+    where: scope.where("siteId"),
     include: {
       site: { select: { id: true, code: true, name: true } },
     },

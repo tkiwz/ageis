@@ -1,12 +1,14 @@
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ok, serverError } from "@/lib/api-response";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    await requireAuth();
+    const scope = await requireScopedAuth();
+    if (scope instanceof Response) return scope;
     const { searchParams } = new URL(request.url);
     const siteId = searchParams.get("siteId");
     const type = searchParams.get("type");
@@ -14,6 +16,7 @@ export async function GET(request: Request) {
 
     const devices = await db.ioTDevice.findMany({
       where: {
+        ...scope.where("siteId"),
         ...(siteId && { siteId }),
         ...(type && { type }),
         ...(status && { status }),

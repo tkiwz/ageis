@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +19,12 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status");
     const productType = searchParams.get("productType");
 
-    const where: any = {};
+    const scope = await requireScopedAuth();
+    if (scope instanceof Response) return scope;
+
+    const where: any = scope.unrestricted
+      ? {}
+      : { OR: [{ startSiteId: { in: scope.siteScope } }, { endSiteId: { in: scope.siteScope } }] };
     if (status) where.status = status;
     if (productType) where.productType = productType;
 
@@ -59,6 +67,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/pipelines — Create new pipeline
 export async function POST(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 

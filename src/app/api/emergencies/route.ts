@@ -1,18 +1,21 @@
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ok, serverError } from "@/lib/api-response";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    await requireAuth();
+    const scope = await requireScopedAuth();
+    if (scope instanceof Response) return scope;
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
-    const limit = Number(searchParams.get("limit") ?? 20);
+    const limit = Math.min(Number(searchParams.get("limit") ?? 20) || 20, 100);
 
     const emergencies = await db.emergencyEvent.findMany({
       where: {
+        ...scope.where("siteId"),
         ...(status && { status }),
       },
       include: {

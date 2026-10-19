@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +16,11 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20"), 100);
 
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
+
   const alerts = await db.alert.findMany({
+    where: scope.where("siteId"),
     orderBy: { createdAt: "desc" },
     take: limit,
     include: { site: { select: { code: true, name: true } } },
@@ -47,6 +54,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 

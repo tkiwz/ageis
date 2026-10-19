@@ -12,6 +12,8 @@ import { auth } from "@/auth";
 import { ok, fail, unauthorized } from "@/lib/api-response";
 import { ingestContribution } from "@/lib/knowledge/ingest";
 import { extractDocumentText } from "@/lib/knowledge/document-extractor";
+import { denyUnlessRole } from "@/lib/security/api-guard";
+import { ROLE_GROUPS } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +22,8 @@ export const maxDuration = 90;
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export async function POST(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.FIELD);
+  if (denied) return denied;
   const session = await auth();
   if (!session?.user) return unauthorized();
 

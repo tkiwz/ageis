@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { log } from "@/lib/observability/logger";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("incident", id);
+
+  if (hidden) return hidden;
 
   const incident = await db.incident.findUnique({
     where: { id },
@@ -66,6 +71,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   const { id } = await ctx.params;
+
+  const hidden = await denyUnlessSiteVisible("incident", id);
+
+  if (hidden) return hidden;
 
   const existing = await db.incident.findUnique({
     where: { id },
