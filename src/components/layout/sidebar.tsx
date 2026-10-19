@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Shield } from "lucide-react";
 import { filterNavigationForRole } from "@/lib/navigation";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Logo } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/client";
 import type { Role } from "@/lib/constants";
@@ -18,60 +18,49 @@ export function Sidebar({ role }: SidebarProps) {
   const modules = filterNavigationForRole(role);
   const { isAr, t } = useI18n();
 
+  // The most specific matching href is active (so /command doesn't light up on /command/emergencies)
+  const allHrefs = modules.flatMap((m) => m.items.map((i) => i.href));
+  const activeHref = allHrefs
+    .filter((h) => pathname === h || pathname.startsWith(h + "/"))
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col border-e border-border bg-card/40 backdrop-blur-md">
-      {/* Logo + Brand */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-4">
-        <Shield className="h-7 w-7 text-primary" strokeWidth={1.5} />
-        <div className="min-w-0 flex-1">
-          <div className="font-display text-lg font-semibold leading-none">{t("app.name")}</div>
-          <div className="mt-1 truncate text-[11px] text-muted-foreground">{t("app.tagline")}</div>
-        </div>
+    <aside className="material flex h-screen w-[248px] shrink-0 flex-col border-e border-border/70">
+      <div className="flex h-14 items-center px-4">
+        <Link href="/dashboard" className="rounded-lg outline-offset-4">
+          <Logo showTagline={t("app.tagline")} />
+        </Link>
       </div>
 
-      {/* Status indicator */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <span className="status-dot status-online" />
-        <span className="text-xs text-risk-low">{t("layout.systemOnline")}</span>
-      </div>
-
-      {/* Nav */}
       <ScrollArea className="flex-1">
-        <nav className="space-y-6 p-3">
+        <nav className="space-y-5 px-3 pb-4 pt-2">
           {modules.map((module) => (
             <div key={module.id}>
-              <div className="mb-2 flex items-center gap-2 px-2">
-                <module.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                <h3 className="text-[11px] font-semibold tracking-wide text-muted-foreground">
-                  {isAr ? module.labelAr ?? module.label : module.label}
-                </h3>
-              </div>
-
+              <h3 className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground">
+                {isAr ? module.labelAr : module.label}
+              </h3>
               <ul className="space-y-0.5">
                 {module.items.map((item) => {
-                  const isActive =
-                    pathname === item.href ||
-                    (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                  const isActive = item.href === activeHref;
                   return (
                     <li key={item.href}>
                       <Link
                         href={item.href}
+                        aria-current={isActive ? "page" : undefined}
                         className={cn(
-                          "group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
+                          "group flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors duration-150",
                           isActive
-                            ? "bg-primary/10 text-primary"
-                            : "text-foreground/70 hover:bg-accent hover:text-foreground",
+                            ? "bg-primary/10 font-medium text-primary"
+                            : "text-foreground/75 hover:bg-accent hover:text-foreground",
                         )}
                       >
                         <item.icon
-                          className={cn(
-                            "h-4 w-4 shrink-0",
-                            isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
-                          )}
+                          className={cn("h-[18px] w-[18px] shrink-0", isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")}
+                          strokeWidth={1.75}
                         />
-                        <span className="flex-1 truncate">{isAr ? item.labelAr ?? item.label : item.label}</span>
+                        <span className="flex-1 truncate">{isAr ? item.labelAr : item.label}</span>
                         {item.badge && item.badge > 0 && (
-                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-risk-critical/20 px-1.5 text-[10px] font-semibold text-risk-critical">
+                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[10px] font-semibold text-destructive-foreground">
                             {item.badge}
                           </span>
                         )}
@@ -85,9 +74,9 @@ export function Sidebar({ role }: SidebarProps) {
         </nav>
       </ScrollArea>
 
-      {/* Footer: current role */}
-      <div className="border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
-        {t(`roles.${role}`)}
+      <div className="flex items-center gap-2 border-t border-border/70 px-4 py-3 text-xs text-muted-foreground">
+        <span className="status-dot status-online" aria-hidden />
+        <span className="truncate">{t("layout.systemOnline")}</span>
       </div>
     </aside>
   );

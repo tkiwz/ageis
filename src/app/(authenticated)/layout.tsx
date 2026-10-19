@@ -26,7 +26,7 @@ export default async function AuthenticatedLayout({
             department: user.department,
           }}
         />
-        <main className="flex-1 overflow-y-auto bg-grid">
+        <main className="flex-1 overflow-y-auto">
           {children}
         </main>
       </div>

@@ -1,42 +1,45 @@
 import {
   type LucideIcon,
   LayoutDashboard,
-  Map,
+  MonitorDot,
   Siren,
-  Factory,
-  ClipboardCheck,
-  Radio,
-  CheckSquare,
+  BellRing,
+  FileCheck2,
+  ListChecks,
+  Building2,
   AlertTriangle,
   Eye,
-  Search,
   ShieldAlert,
-  FileCheck,
-  Users,
-  ClipboardList,
-  GraduationCap,
-  Brain,
-  Sparkles,
-  Zap,
-  ScrollText,
-  UserCog,
-  Bell,
-  Settings,
-  MessageSquare,
+  HeartPulse,
+  Waypoints,
+  Gauge,
   Cpu,
-  Activity,
-  GitBranch,
-  ShieldOff,
+  ClipboardCheck,
+  SearchCheck,
+  HardHat,
+  GraduationCap,
+  FileText,
+  BrainCircuit,
+  Users,
   Lock,
+  Workflow,
+  SlidersHorizontal,
+  ScrollText,
+  Settings,
+  Activity,
+  Briefcase,
+  Boxes,
+  Scale,
+  Shield,
 } from "lucide-react";
 import type { Role } from "@/lib/constants";
+import { canAccessRoute } from "@/lib/rbac";
 
 export interface NavItem {
   label: string;
-  labelAr?: string;
+  labelAr: string;
   href: string;
   icon: LucideIcon;
-  roles: Role[];
   badge?: number;
 }
 
@@ -45,283 +48,100 @@ export interface NavModule {
   label: string;
   labelAr: string;
   icon: LucideIcon;
-  roles: Role[];
   items: NavItem[];
 }
 
+/**
+ * Sidebar, grouped by job (not by technology). Related pages live behind
+ * SectionTabs inside one entry (e.g. Incidents | Investigations), so users
+ * never hop between systems. Visibility comes from the RBAC matrix only.
+ */
 export const NAVIGATION: NavModule[] = [
   {
-    id: "command",
-    label: "Command Center",
-    labelAr: "مركز القيادة",
-    icon: Siren,
-    roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
+    id: "monitor",
+    label: "Monitoring",
+    labelAr: "المراقبة",
+    icon: Activity,
     items: [
-      {
-        label: "Executive Dashboard",
-        labelAr: "اللوحة التنفيذية",
-        href: "/dashboard",
-        icon: LayoutDashboard,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR", "CONTRACTOR"],
-      },
-      {
-        label: "Site Map",
-        labelAr: "خريطة المواقع",
-        href: "/command/map",
-        icon: Map,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
-      },
-      {
-        label: "Emergencies",
-        labelAr: "الطوارئ",
-        href: "/command/emergencies",
-        icon: Siren,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
-      },
+      { label: "Overview", labelAr: "نظرة عامة", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Command center", labelAr: "مركز القيادة", href: "/command", icon: MonitorDot },
+      { label: "Emergencies", labelAr: "الطوارئ", href: "/command/emergencies", icon: Siren },
+      { label: "Alerts", labelAr: "التنبيهات", href: "/admin/alerts", icon: BellRing },
     ],
   },
   {
-    id: "operations",
-    label: "Operations",
-    labelAr: "العمليات",
-    icon: Factory,
-    roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
+    id: "field",
+    label: "Field work",
+    labelAr: "العمل الميداني",
+    icon: Briefcase,
     items: [
-      {
-        label: "Work Sites",
-        labelAr: "مواقع العمل",
-        href: "/operations/sites",
-        icon: Factory,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
-      },
-      {
-        label: "Pipelines",
-        labelAr: "خطوط الأنابيب",
-        href: "/operations/pipelines",
-        icon: GitBranch,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
-      },
-      {
-        label: "Permits (PTW)",
-        labelAr: "تصاريح العمل",
-        href: "/operations/permits",
-        icon: ClipboardCheck,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"],
-      },
-      {
-        label: "Sensors",
-        labelAr: "أجهزة الاستشعار",
-        href: "/operations/sensors",
-        icon: Radio,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
-      },
-      {
-        label: "Tasks",
-        labelAr: "المهام",
-        href: "/operations/tasks",
-        icon: CheckSquare,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
-      },
-      {
-        label: "Field Devices",
-        labelAr: "الأجهزة الميدانية",
-        href: "/operations/devices",
-        icon: Cpu,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"],
-      },
-      {
-        label: "Drones",
-        labelAr: "الطائرات المسيّرة",
-        href: "/operations/drones",
-        icon: Radio,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"],
-      },
+      { label: "Work permits", labelAr: "تصاريح العمل", href: "/operations/permits", icon: FileCheck2 },
+      { label: "Tasks", labelAr: "المهام", href: "/operations/tasks", icon: ListChecks },
+      { label: "Sites", labelAr: "المواقع", href: "/operations/sites", icon: Building2 },
     ],
   },
   {
     id: "safety",
-    label: "Safety",
-    labelAr: "السلامة",
-    icon: ShieldAlert,
-    roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"],
+    label: "Incidents and risk",
+    labelAr: "الحوادث والمخاطر",
+    icon: Shield,
     items: [
-      {
-        label: "Incidents",
-        labelAr: "الحوادث",
-        href: "/safety/incidents",
-        icon: AlertTriangle,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"],
-      },
-      {
-        label: "Observations",
-        labelAr: "الملاحظات",
-        href: "/safety/observations",
-        icon: Eye,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
-      },
-      {
-        label: "Investigations",
-        labelAr: "التحقيقات",
-        href: "/safety/investigations",
-        icon: Search,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
-      },
-      {
-        label: "Risk Assessment",
-        labelAr: "تقييم المخاطر",
-        href: "/safety/risk",
-        icon: ShieldAlert,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
-      },
+      { label: "Incidents", labelAr: "الحوادث", href: "/safety/incidents", icon: AlertTriangle },
+      { label: "Observations", labelAr: "الملاحظات", href: "/safety/observations", icon: Eye },
+      { label: "Risk assessments", labelAr: "تقييم المخاطر", href: "/safety/risk", icon: ShieldAlert },
+      { label: "Worker safety", labelAr: "سلامة العاملين", href: "/safety/wellness", icon: HeartPulse },
     ],
   },
   {
-    id: "governance",
-    label: "Governance",
-    labelAr: "الحوكمة",
-    icon: FileCheck,
-    roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR", "CONTRACTOR"],
+    id: "assets",
+    label: "Assets",
+    labelAr: "الأصول",
+    icon: Boxes,
     items: [
-      {
-        label: "Compliance",
-        labelAr: "الامتثال",
-        href: "/governance/compliance",
-        icon: FileCheck,
-        roles: ["ADMIN", "HSSE_MANAGER"],
-      },
-      {
-        label: "Contractors",
-        labelAr: "المقاولون",
-        href: "/governance/contractors",
-        icon: Users,
-        roles: ["ADMIN", "HSSE_MANAGER"],
-      },
-      {
-        label: "Inspections",
-        labelAr: "التفتيشات",
-        href: "/governance/inspections",
-        icon: ClipboardList,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
-      },
-      {
-        label: "Privacy & Compliance",
-        labelAr: "الخصوصية والامتثال",
-        href: "/governance/privacy",
-        icon: Lock,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR", "CONTRACTOR"],
-      },
+      { label: "Pipelines", labelAr: "خطوط الأنابيب", href: "/operations/pipelines", icon: Waypoints },
+      { label: "Sensors", labelAr: "المستشعرات", href: "/operations/sensors", icon: Gauge },
+      { label: "Devices", labelAr: "الأجهزة", href: "/operations/devices", icon: Cpu },
     ],
   },
   {
-    id: "intelligence",
-    label: "Intelligence",
-    labelAr: "الذكاء",
-    icon: Brain,
-    roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR", "CONTRACTOR"],
+    id: "compliance",
+    label: "Compliance",
+    labelAr: "الامتثال",
+    icon: Scale,
     items: [
-      {
-        label: "AI Chat",
-        labelAr: "المساعد الذكي",
-        href: "/intelligence/chat",
-        icon: MessageSquare,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR", "CONTRACTOR"],
-      },
-      {
-        label: "AI Predictions",
-        labelAr: "التنبؤات الذكية",
-        href: "/intelligence/ai",
-        icon: Brain,
-        roles: ["ADMIN", "HSSE_MANAGER"],
-      },
-      {
-        label: "Rule Engine",
-        labelAr: "محرك القواعد",
-        href: "/intelligence/rules",
-        icon: Zap,
-        roles: ["ADMIN", "HSSE_MANAGER"],
-      },
-      {
-        label: "AEGIS Brain",
-        labelAr: "العقل المركزي",
-        href: "/intelligence/brain",
-        icon: Brain,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
-      },
-      {
-        label: "Knowledge",
-        labelAr: "المعرفة",
-        href: "/intelligence/knowledge",
-        icon: GraduationCap,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
-      },
-      {
-        label: "AI Suggestions",
-        labelAr: "اقتراحات الذكاء",
-        href: "/intelligence/suggestions",
-        icon: Sparkles,
-        roles: ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
-      },
-      {
-        label: "Audit Log",
-        labelAr: "سجل التدقيق",
-        href: "/intelligence/audit",
-        icon: ScrollText,
-        roles: ["ADMIN", "HSSE_MANAGER"],
-      },
+      { label: "Compliance", labelAr: "متطلبات الامتثال", href: "/governance/compliance", icon: ClipboardCheck },
+      { label: "Inspections", labelAr: "التفتيش", href: "/governance/inspections", icon: SearchCheck },
+      { label: "Contractors", labelAr: "المقاولون", href: "/governance/contractors", icon: HardHat },
+      { label: "Training", labelAr: "التدريب", href: "/governance/training", icon: GraduationCap },
+      { label: "Documents", labelAr: "المستندات", href: "/governance/documents", icon: FileText },
     ],
+  },
+  {
+    id: "assistant",
+    label: "Assistant",
+    labelAr: "المساعد",
+    icon: BrainCircuit,
+    items: [{ label: "AEGIS assistant", labelAr: "مساعد AEGIS", href: "/intelligence/chat", icon: BrainCircuit }],
   },
   {
     id: "admin",
     label: "Administration",
     labelAr: "الإدارة",
     icon: Settings,
-    roles: ["ADMIN", "HSSE_MANAGER"],
     items: [
-      {
-        label: "Users",
-        labelAr: "المستخدمون",
-        href: "/admin/users",
-        icon: UserCog,
-        roles: ["ADMIN"],
-      },
-      {
-        label: "Autonomy Control",
-        labelAr: "التحكم الذاتي",
-        href: "/admin/autonomy",
-        icon: ShieldOff,
-        roles: ["ADMIN", "HSSE_MANAGER"],
-      },
-      {
-        label: "Security",
-        labelAr: "الأمن",
-        href: "/admin/security",
-        icon: Lock,
-        roles: ["ADMIN", "HSSE_MANAGER"],
-      },
-      {
-        label: "Alerts",
-        labelAr: "التنبيهات",
-        href: "/admin/alerts",
-        icon: Bell,
-        roles: ["ADMIN", "HSSE_MANAGER"],
-      },
-      {
-        label: "Settings",
-        labelAr: "الإعدادات",
-        href: "/admin/settings",
-        icon: Settings,
-        roles: ["ADMIN"],
-      },
+      { label: "Users", labelAr: "المستخدمون", href: "/admin/users", icon: Users },
+      { label: "Security", labelAr: "الأمان", href: "/admin/security", icon: Lock },
+      { label: "Automation", labelAr: "الأتمتة", href: "/admin/autonomy", icon: Workflow },
+      { label: "Rules", labelAr: "القواعد", href: "/intelligence/rules", icon: SlidersHorizontal },
+      { label: "Audit log", labelAr: "سجل التدقيق", href: "/intelligence/audit", icon: ScrollText },
+      { label: "Settings", labelAr: "الإعدادات", href: "/admin/settings", icon: Settings },
     ],
   },
 ];
 
+/** Only links the role can open; empty groups are hidden. */
 export function filterNavigationForRole(role: Role): NavModule[] {
-  return NAVIGATION
-    .filter((module) => module.roles.includes(role))
-    .map((module) => ({
-      ...module,
-      items: module.items.filter((item) => item.roles.includes(role)),
-    }))
-    .filter((module) => module.items.length > 0);
+  return NAVIGATION.map((m) => ({ ...m, items: m.items.filter((i) => canAccessRoute(role, i.href)) })).filter(
+    (m) => m.items.length > 0,
+  );
 }

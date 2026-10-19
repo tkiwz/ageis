@@ -132,6 +132,8 @@ export const coreNs: CoreMessages = {
     "3d": "عرض ثلاثي الأبعاد",
   },
   header: {
+    mute: "كتم أصوات التنبيه",
+    unmute: "تشغيل أصوات التنبيه",
     notifications: "الإشعارات",
     markAllRead: "تعليم الكل كمقروء",
     markAsRead: "تعليم كمقروء",

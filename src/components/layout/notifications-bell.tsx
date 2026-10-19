@@ -86,9 +86,9 @@ export function NotificationsBell() {
         className="relative"
         aria-label={t("header.notifications")}
       >
-        <Icon className={cn("h-4 w-4", unread > 0 && "text-primary")} />
+        <Icon className={cn("h-[18px] w-[18px] text-muted-foreground", unread > 0 && "text-foreground")} />
         {unread > 0 && (
-          <span className="absolute end-1 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+          <span className="absolute end-1 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-danger px-1 text-[9px] font-semibold text-destructive-foreground">
             {unread > 99 ? "99+" : unread}
           </span>
         )}

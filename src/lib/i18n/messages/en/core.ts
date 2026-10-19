@@ -132,6 +132,8 @@ export const coreNs = {
     "3d": "3D View",
   },
   header: {
+    mute: "Mute alert sounds",
+    unmute: "Turn on alert sounds",
     notifications: "Notifications",
     markAllRead: "Mark all read",
     markAsRead: "Mark as read",

@@ -4,7 +4,7 @@ import { AlertsClient } from "./alerts-client";
 export const dynamic = "force-dynamic";
 
 export default async function AdminAlertsPage() {
-  await requireRole(["ADMIN", "HSSE_MANAGER"]);
+  await requireRole(["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"]);
   return (
     <div className="container mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 import { isMuted, setMuted, playSound } from "@/lib/sound";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n/client";
 
 export function SoundToggle() {
   const [muted, setMutedState] = useState(false);
@@ -20,19 +21,20 @@ export function SoundToggle() {
     if (!next) playSound("click");
   }
 
+  const t = useT();
   return (
     <Button
       variant="ghost"
       size="icon"
       onClick={toggle}
-      aria-label={muted ? "Unmute sounds" : "Mute sounds"}
-      title={muted ? "Sounds muted" : "Sounds on"}
-      className="relative"
+      aria-label={muted ? t("header.unmute") : t("header.mute")}
+      title={muted ? t("header.unmute") : t("header.mute")}
+      className="relative text-muted-foreground"
     >
       {muted ? (
-        <VolumeX className="h-4 w-4 text-muted-foreground" />
+        <VolumeX className="h-[18px] w-[18px]" />
       ) : (
-        <Volume2 className="h-4 w-4 text-primary" />
+        <Volume2 className="h-[18px] w-[18px]" />
       )}
     </Button>
   );

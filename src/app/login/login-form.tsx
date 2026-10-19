@@ -51,7 +51,7 @@ export function LoginForm() {
   return (
     <Card>
       <CardContent className="space-y-5 p-6">
-        <h2 className="text-center text-lg font-semibold">{t("auth.title")}</h2>
+        <h2 className="text-center text-base font-medium text-muted-foreground">{t("auth.title")}</h2>
 
         {error && (
           <Alert variant="destructive">
@@ -101,7 +101,7 @@ export function LoginForm() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full gap-2" disabled={isPending}>
+          <Button type="submit" size="lg" className="w-full" disabled={isPending}>
             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
             {isPending ? t("auth.signingIn") : t("auth.signIn")}
           </Button>

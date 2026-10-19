@@ -11,9 +11,9 @@ export function LanguageSwitcher() {
       type="button"
       onClick={() => setLocale(isAr ? "en" : "ar")}
       aria-label={t("layout.language")}
-      className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm transition-colors hover:bg-accent"
+      className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
-      <Languages className="h-4 w-4" />
+      <Languages className="h-[18px] w-[18px]" />
       <span>{t("layout.switchTo")}</span>
     </button>
   );

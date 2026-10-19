@@ -6,6 +6,7 @@ import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { requireScopedAuth } from "@/lib/scoped-auth";
 import { alertCreateSchema, zodMessage } from "@/lib/validations/api";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,8 +21,10 @@ export async function GET(req: NextRequest) {
   const scope = await requireScopedAuth();
   if (scope instanceof Response) return scope;
 
+  // ?open=1 → only unacknowledged (action queue)
+  const openOnly = url.searchParams.get("open") === "1";
   const alerts = await db.alert.findMany({
-    where: scope.where("siteId"),
+    where: { ...scope.where("siteId"), ...(openOnly ? { acknowledgedAt: null } : {}) },
     orderBy: { createdAt: "desc" },
     take: limit,
     include: { site: { select: { code: true, name: true } } },
@@ -46,6 +49,7 @@ export async function GET(req: NextRequest) {
       createdAt: a.createdAt.toISOString(),
       site: a.site ?? null,
     })),
+    openCount: await db.alert.count({ where: { ...scope.where("siteId"), acknowledgedAt: null } }),
     summary: {
       total: alerts.length,
       byType,
@@ -93,4 +97,32 @@ export async function POST(req: NextRequest) {
   });
 
   return ok(alert);
+}
+/** PATCH /api/alerts { id } — acknowledge an alert (inline, from any alert list). */
+export async function PATCH(req: NextRequest) {
+  const denied = await denyUnlessRole(ROLE_GROUPS.SUPERVISE);
+  if (denied) return denied;
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
+
+  const body = (await req.json().catch(() => null)) as { id?: unknown } | null;
+  if (typeof body?.id !== "string") return fail("VALIDATION", "id required", 400);
+
+  const alert = await db.alert.findUnique({ where: { id: body.id }, select: { id: true, siteId: true, title: true, acknowledgedAt: true } });
+  if (!alert || (!scope.unrestricted && !scope.canSee(alert.siteId))) return fail("NOT_FOUND", "Alert not found", 404);
+  if (alert.acknowledgedAt) return ok({ id: alert.id, acknowledgedAt: alert.acknowledgedAt.toISOString() });
+
+  const updated = await db.alert.update({
+    where: { id: alert.id },
+    data: { acknowledgedAt: new Date(), status: "ACKNOWLEDGED" },
+  });
+  appendAuditLog({
+    module: "ALERTS",
+    action: "ACKNOWLEDGE",
+    actionType: "MANUAL",
+    description: `Alert acknowledged: ${alert.title}`,
+    userId: scope.userId,
+    siteId: alert.siteId ?? undefined,
+  }).catch(() => {});
+  return ok({ id: updated.id, acknowledgedAt: updated.acknowledgedAt?.toISOString() ?? null });
 }

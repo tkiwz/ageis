@@ -6,18 +6,36 @@ import type { Role } from "@/lib/constants";
  *
  * Example: "/admin" → only ADMIN role
  */
+// Longest prefix wins. The sidebar is derived from this table, so a link is
+// shown only if the role can open it.
+const ALL: Role[] = ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR", "CONTRACTOR"];
+const FIELD_ROLES: Role[] = ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"];
+const SUPERVISE_ROLES: Role[] = ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"];
+const SAFETY_ROLES: Role[] = ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"];
+const MANAGE_ROLES: Role[] = ["ADMIN", "HSSE_MANAGER"];
+
 export const ROUTE_PERMISSIONS: Record<string, Role[]> = {
-  "/admin/autonomy": ["ADMIN", "HSSE_MANAGER"],
-  "/admin/security": ["ADMIN", "HSSE_MANAGER"],
-  "/admin":        ["ADMIN"],
-  "/intelligence/knowledge": ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
-  "/intelligence": ["ADMIN", "HSSE_MANAGER"],
-  "/governance/privacy": ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR", "CONTRACTOR"],
-  "/governance":   ["ADMIN", "HSSE_MANAGER"],
-  "/command":      ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"],
-  "/safety":       ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"],
-  "/operations":   ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR"],
-  "/dashboard":    ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR", "OPERATOR", "CONTRACTOR"],
+  "/admin/alerts":   SUPERVISE_ROLES,
+  "/admin/autonomy": MANAGE_ROLES,
+  "/admin/security": MANAGE_ROLES,
+  "/admin":          ["ADMIN"],
+  "/intelligence/chat":        FIELD_ROLES,
+  "/intelligence/knowledge":   FIELD_ROLES,
+  "/intelligence/brain":       SAFETY_ROLES,
+  "/intelligence/suggestions": SAFETY_ROLES,
+  "/intelligence":   MANAGE_ROLES,
+  "/governance/privacy":     ALL,
+  "/governance/inspections": SAFETY_ROLES,
+  "/governance":     MANAGE_ROLES,
+  "/command":        SAFETY_ROLES,
+  "/safety/observations":    FIELD_ROLES,
+  "/safety/investigations":  SAFETY_ROLES,
+  "/safety/risk":            SAFETY_ROLES,
+  "/safety":         SUPERVISE_ROLES,
+  "/operations/devices":     SUPERVISE_ROLES,
+  "/operations/drones":      SUPERVISE_ROLES,
+  "/operations":     FIELD_ROLES,
+  "/dashboard":      ALL,
 };
 
 /**
