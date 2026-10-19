@@ -4,6 +4,7 @@ import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { piGetStats } from "@/lib/devices/pi-client";
 import { analyzeVisionDetection } from "@/lib/ai/decision-engine";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ const MIN_CONFIDENCE = 0.70;
  * Returns: { recorded, analyzed, alertCreated, detection }
  */
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 

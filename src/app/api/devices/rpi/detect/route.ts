@@ -18,6 +18,8 @@ import { NextRequest } from "next/server";
 import { z }           from "zod";
 import { db }          from "@/lib/db";
 import { ok, fail }    from "@/lib/api-response";
+import { verifyDeviceSecret } from "@/lib/security/device-auth";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -61,12 +63,8 @@ const detectSchema = z.object({
 // ─── POST Handler ──────────────────────────────────────────
 export async function POST(req: NextRequest) {
   // --- Auth ---
-  const secret = process.env.DEVICE_INGEST_SECRET;
-  if (secret) {
-    const provided = req.headers.get("x-device-secret");
-    if (provided !== secret) {
-      return fail("UNAUTHORIZED", "Invalid device secret", 401);
-    }
+  if (!verifyDeviceSecret(req)) {
+    return fail("UNAUTHORIZED", "Invalid device secret", 401);
   }
 
   // --- Parse ---
@@ -163,6 +161,8 @@ export async function POST(req: NextRequest) {
 
 // ─── GET — detections for a device or all RPi devices ─────
 export async function GET(req: NextRequest) {
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
   const code  = req.nextUrl.searchParams.get("device");
   const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 20), 100);
 

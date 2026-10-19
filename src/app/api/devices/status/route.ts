@@ -9,10 +9,13 @@
 import { NextRequest } from "next/server";
 import { db }           from "@/lib/db";
 import { ok }           from "@/lib/api-response";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
   const type = req.nextUrl.searchParams.get("type"); // ESP32_WEARABLE | PI_VISION | null (all)
 
   const whereClause = type ? { type } : {};

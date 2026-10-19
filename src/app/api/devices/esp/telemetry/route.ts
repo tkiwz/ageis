@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { claudeChat } from "@/lib/ai/claude-client";
+import { verifyDeviceSecret } from "@/lib/security/device-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +74,9 @@ Respond ONLY with JSON.`;
 }
 
 export async function POST(req: NextRequest) {
+  if (!verifyDeviceSecret(req)) {
+    return fail("UNAUTHORIZED", "Invalid device secret", 401);
+  }
   let body: ESP32Payload;
   try { body = await req.json(); }
   catch { return fail("INVALID_BODY", "Invalid JSON", 400); }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic";
  * We pipe its response body straight through.
  */
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
   const session = await auth();
   if (!session?.user) {
     return new NextResponse("Unauthorized", { status: 401 });

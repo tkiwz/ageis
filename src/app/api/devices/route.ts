@@ -3,11 +3,14 @@ import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import type { FieldDeviceListItem } from "@/types/devices";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest) {
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
   const session = await auth();
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 

@@ -14,14 +14,13 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api-response";
 import { ingestWellnessReading } from "@/lib/wellness/analyzer";
+import { verifyDeviceSecret } from "@/lib/security/device-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const deviceSecret = req.headers.get("x-device-secret");
-  const expected = process.env.DEVICE_INGEST_SECRET;
-  let authorized = Boolean(expected && deviceSecret === expected);
+  let authorized = Boolean(process.env.DEVICE_INGEST_SECRET) && verifyDeviceSecret(req);
 
   if (!authorized) {
     const { auth } = await import("@/auth");

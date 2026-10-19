@@ -15,6 +15,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { verifyDeviceSecret } from "@/lib/security/device-auth";
+import { requireScopedAuth } from "@/lib/scoped-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +26,7 @@ export const dynamic = "force-dynamic";
 // ─────────────────────────────────────────────────────────────
 
 function checkDeviceKey(req: NextRequest): boolean {
-  const secret = process.env.DEVICE_INGEST_SECRET;
-  if (!secret) return true; // disabled in dev — set the env var in production
-  const provided = req.headers.get("X-Device-Key");
-  return provided === secret;
+  return verifyDeviceSecret(req);
 }
 
 function nextIncidentNumber(count: number): string {
@@ -190,6 +189,8 @@ export async function POST(req: NextRequest) {
 // ─────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
   try {
     const { searchParams } = new URL(req.url);
     const device = searchParams.get("device") ?? "VEH-001";

@@ -51,3 +51,13 @@ next-env.d.ts
 # System files
 .DS_Store
 Thumbs.db
+# DB dumps / local DB files — never commit (repo is public)
+*.sql
+!prisma/sql/*.sql
+!prisma/migrations/**/*.sql
+*.db
+*.db-journal
+*.db.backup-*
+*.bak
+auth-wal
+test-results/
