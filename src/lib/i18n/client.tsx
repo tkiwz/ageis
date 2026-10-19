@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { LOCALE_COOKIE, dirOf, type Locale } from "./config";
 import { createT, formatDate, formatDateTime, formatNumber, formatRelative, formatTime, tEnum, type TFunction } from "./translate";
 import type { Messages } from "./messages/en";
@@ -17,15 +16,14 @@ interface I18nValue {
 const I18nContext = createContext<I18nValue | null>(null);
 
 export function I18nProvider({ locale, messages, children }: { locale: Locale; messages: Messages; children: ReactNode }) {
-  const router = useRouter();
   const setLocale = useCallback(
     (l: Locale) => {
       document.cookie = `${LOCALE_COOKIE}=${l}; path=/; max-age=31536000; samesite=lax`;
-      document.documentElement.lang = l;
-      document.documentElement.dir = dirOf(l);
-      router.refresh(); // server re-renders with the new dictionary
+      // Full reload: server components, client state and the dictionary all
+      // switch together (a soft refresh can keep the old dictionary).
+      window.location.reload();
     },
-    [router],
+    [],
   );
   const value = useMemo<I18nValue>(
     () => ({ locale, dir: dirOf(locale), isAr: locale === "ar", t: createT(messages), setLocale }),
