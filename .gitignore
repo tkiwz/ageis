@@ -61,3 +61,6 @@ Thumbs.db
 *.bak
 auth-wal
 test-results/
+
+# Agent worktrees
+.claude/worktrees/
