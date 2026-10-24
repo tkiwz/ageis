@@ -64,6 +64,8 @@ export const enums: EnumMessages = {
     WARNING: "تحذير",
   },
   incidentType: {
+    INJURY: "إصابة",
+    OTHER: "أخرى",
     NEAR_MISS: "حادث وشيك",
     MINOR: "إصابة طفيفة",
     MAJOR: "إصابة بالغة",

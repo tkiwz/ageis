@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, Loader2, Sparkles, X, AlertCircle, Volume2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { AlertCircle, BrainCircuit, Loader2, Mic, Square, Volume2, X } from "lucide-react";
+import { useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/translate";
+import { Button } from "@/components/ui/button";
 import { getSecureContextStatus } from "@/lib/secure-context";
+import { cn } from "@/lib/utils";
 
 type VoiceState = "idle" | "listening" | "processing" | "speaking";
 
 // Minimal types for the Web Speech API
-type SpeechRecognitionResult = {
-  isFinal: boolean;
-  0: { transcript: string };
-};
+type SpeechRecognitionResult = { isFinal: boolean; 0: { transcript: string } };
 interface SpeechRecognitionEvent extends Event {
   results: { length: number; [i: number]: SpeechRecognitionResult };
 }
@@ -30,48 +30,37 @@ interface SpeechRecognitionInstance {
 interface VoiceResponse {
   intent?: string;
   target?: string;
-  speech?: { en?: string; ar?: string; ur?: string; ne?: string };
-  data?: unknown;
-  actionResult?: unknown;
-  confirmationToken?: string;
+  speech?: { en?: string; ar?: string };
 }
 
-const LANGS = [
-  { code: "en", label: "English", locale: "en-US" },
-  { code: "ar", label: "العربية", locale: "ar-SA" },
-  { code: "ur", label: "اردو", locale: "ur-PK" },
-  { code: "ne", label: "नेपाली", locale: "ne-NP" },
-] as const;
+const SPEECH_LOCALE = { ar: "ar-OM", en: "en-US" } as const;
+const EXAMPLES = ["mobile.voice.example1", "mobile.voice.example2", "mobile.voice.example3"] as const;
 
-type LangCode = (typeof LANGS)[number]["code"];
-
+/** Voice commands in the app language (Arabic or English). */
 export default function MobileVoicePage() {
   const router = useRouter();
-  const [lang, setLang] = useState<LangCode>("en");
+  const { t, locale } = useI18n();
+  const speechLocale = SPEECH_LOCALE[locale];
   const [state, setState] = useState<VoiceState>("idle");
   const [transcript, setTranscript] = useState("");
-  const [response, setResponse] = useState<VoiceResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [reply, setReply] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
   const [supported, setSupported] = useState<boolean | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
-  const sessionIdRef = useRef<string>("");
+  const sessionIdRef = useRef("");
+  const processRef = useRef<(text: string) => void>(() => {});
 
-  // Session id (persists per browser tab)
   useEffect(() => {
-    if (sessionIdRef.current) return;
-    if (typeof window !== "undefined") {
-      let id = sessionStorage.getItem("aegis-voice-session");
-      if (!id) {
-        id = `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        sessionStorage.setItem("aegis-voice-session", id);
-      }
-      sessionIdRef.current = id;
+    let id = sessionStorage.getItem("aegis-voice-session");
+    if (!id) {
+      id = `mobile-${crypto.randomUUID()}`;
+      sessionStorage.setItem("aegis-voice-session", id);
     }
+    sessionIdRef.current = id;
   }, []);
 
-  // Init speech recognition when lang changes
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const W = window as unknown as {
       SpeechRecognition?: new () => SpeechRecognitionInstance;
       webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
@@ -85,261 +74,184 @@ export default function MobileVoicePage() {
     const r = new SR();
     r.continuous = false;
     r.interimResults = true;
-    r.lang = LANGS.find((l) => l.code === lang)?.locale ?? "en-US";
-
+    r.lang = speechLocale;
     r.onresult = (event) => {
-      const lastIdx = event.results.length - 1;
-      const result = event.results[lastIdx];
-      const text = result[0].transcript;
-      setTranscript(text);
-      if (result.isFinal) processVoice(text);
+      const result = event.results[event.results.length - 1];
+      setTranscript(result[0].transcript);
+      if (result.isFinal) processRef.current(result[0].transcript);
     };
     r.onerror = (e) => {
-      setError(`${e.error}`);
+      setErrorKey(e.error === "not-allowed" ? "mobile.voice.micDenied" : e.error === "no-speech" ? "mobile.voice.noSpeech" : "mobile.voice.failed");
       setState("idle");
     };
-    r.onend = () => {
-      setState((s) => (s === "listening" ? "idle" : s));
-    };
-
+    r.onend = () => setState((s) => (s === "listening" ? "idle" : s));
     recognitionRef.current = r;
     return () => {
-      try { r.stop(); } catch { /* noop */ }
+      try {
+        r.stop();
+      } catch {
+        /* already stopped */
+      }
     };
-  }, [lang]);
+  }, [speechLocale]);
 
-  async function processVoice(text: string) {
+  function speak(text: string) {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = speechLocale;
+    u.rate = 0.95;
+    window.speechSynthesis.speak(u);
+  }
+
+  processRef.current = async (text: string) => {
     setState("processing");
     try {
       const res = await fetch("/api/voice/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: text,
-          lang,
-          sessionId: sessionIdRef.current,
-        }),
+        body: JSON.stringify({ transcript: text, lang: locale, sessionId: sessionIdRef.current }),
       });
       const data = await res.json();
       if (!data.ok) {
-        const msg = data.error?.message ?? "Failed";
-        throw new Error(msg);
+        const code = String(data.error?.code ?? "");
+        setErrorKey(code === "RATE_LIMITED" ? "mobile.voice.busy" : code === "AI_BUDGET_EXCEEDED" ? "mobile.voice.aiUnavailable" : "mobile.voice.failed");
+        setState("idle");
+        return;
       }
-      setResponse(data.data);
-      executeIntent(data.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      const parsed = data.data as VoiceResponse;
+      const speech = parsed.speech?.[locale] ?? parsed.speech?.en ?? null;
+      setReply(speech);
+      if (speech) speak(speech);
+      if (parsed.intent === "NAVIGATE" && parsed.target?.startsWith("/")) setTimeout(() => router.push(parsed.target!), 1200);
+      setState("speaking");
+      setTimeout(() => setState("idle"), 2500);
+    } catch {
+      setErrorKey("mobile.voice.failed");
       setState("idle");
     }
-  }
+  };
 
-  function executeIntent(parsed: VoiceResponse) {
-    const speech = parsed.speech?.[lang];
-    if (speech) speak(speech, LANGS.find((l) => l.code === lang)?.locale ?? "en-US");
-    if (parsed.intent === "NAVIGATE" && parsed.target) {
-      setTimeout(() => router.push(parsed.target!), 1200);
-    }
-    setState("speaking");
-    setTimeout(() => setState("idle"), 2500);
-  }
-
-  function speak(text: string, locale: string) {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = locale;
-    u.rate = 0.95;
-    window.speechSynthesis.speak(u);
+  function clear() {
+    setTranscript("");
+    setReply(null);
+    setErrorKey(null);
+    setErrorText(null);
   }
 
   function start() {
-    setError(null);
-    setTranscript("");
-    setResponse(null);
-
-    // Secure-context check first — mic blocked on http://lan-ip
+    clear();
     const ctx = getSecureContextStatus();
     if (!ctx.secure) {
-      setError(lang === "ar" ? ctx.suggestionAr : ctx.suggestion);
+      setErrorText(locale === "ar" ? ctx.suggestionAr : ctx.suggestion);
       return;
     }
-
     const r = recognitionRef.current;
     if (!r) {
-      setError("Voice recognition not available");
+      setErrorKey("mobile.voice.failed");
       return;
     }
     try {
       r.start();
       setState("listening");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start");
+    } catch {
+      setErrorKey("mobile.voice.failed");
     }
   }
 
   function stop() {
-    try { recognitionRef.current?.stop(); } catch { /* noop */ }
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* already stopped */
+    }
     setState("idle");
-  }
-
-  function clear() {
-    stop();
-    setTranscript("");
-    setResponse(null);
-    setError(null);
-  }
-
-  // Friendly error display
-  function friendlyError(raw: string): string {
-    const e = raw.toLowerCase();
-    if (e.includes("not-allowed") || e.includes("not allowed")) {
-      return lang === "ar"
-        ? "صلاحية الميكروفون مرفوضة — فعّلها من إعدادات المتصفح."
-        : "Microphone permission denied. Enable it in browser settings.";
-    }
-    if (e.includes("no-speech")) {
-      return lang === "ar" ? "لم أسمع شيئاً، حاول مجدداً." : "I didn't hear anything. Try again.";
-    }
-    if (e.includes("spending limit") || e.includes("budget") || e.includes("quota")) {
-      return lang === "ar"
-        ? "خدمة الذكاء غير متاحة حالياً (وصلت حدّ الصرف)."
-        : "AI service unavailable (spending limit reached).";
-    }
-    if (e.includes("rate limit") || e.includes("429")) {
-      return lang === "ar" ? "ازدحام، جرّب بعد ثوانٍ." : "Too many requests, try again.";
-    }
-    if (raw.length > 160) return raw.slice(0, 160) + "…";
-    return raw;
   }
 
   if (supported === false) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 text-center px-4">
-        <AlertCircle className="h-12 w-12 text-risk-medium" />
-        <div>
-          <div className="font-semibold">Voice not supported on this browser</div>
-          <p className="mt-1 text-sm text-muted-foreground">Use Safari, Chrome, or Edge.</p>
-          <p dir="rtl" className="mt-1 text-xs text-muted-foreground">
-            استخدم Safari أو Chrome أو Edge
-          </p>
-        </div>
+      <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-3 text-center">
+        <AlertCircle className="h-12 w-12 text-warning" />
+        <h1 className="text-xl font-semibold">{t("mobile.voice.notSupportedTitle")}</h1>
+        <p className="text-muted-foreground">{t("mobile.voice.notSupportedBody")}</p>
       </div>
     );
   }
 
+  const statusText =
+    state === "listening" ? t("mobile.voice.tapToStop")
+    : state === "processing" ? t("mobile.voice.thinking")
+    : state === "speaking" ? t("mobile.voice.responding")
+    : t("mobile.voice.tapToTalk");
+  const error = errorText ?? (errorKey ? t(errorKey) : null);
+
   return (
-    <div className="flex min-h-[calc(100vh-180px)] flex-col items-center justify-between gap-6 px-2 py-4 text-center">
-      {/* Language picker */}
-      <div className="grid w-full grid-cols-4 gap-1 rounded-full border border-border/40 p-1">
-        {LANGS.map((l) => (
-          <button
-            key={l.code}
-            onClick={() => setLang(l.code)}
-            disabled={state !== "idle"}
-            className={cn(
-              "rounded-full px-2 py-1.5 text-xs transition-colors disabled:opacity-50",
-              lang === l.code ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {l.label}
-          </button>
-        ))}
+    <div className="flex min-h-[calc(100dvh-180px)] flex-col items-center gap-6 text-center">
+      <div>
+        <h1 className="text-2xl font-semibold">{t("mobile.voice.title")}</h1>
+        <p className="mt-1 text-muted-foreground">{t("mobile.voice.description")}</p>
       </div>
 
-      {/* Big mic */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 w-full">
+      <div className="flex flex-1 flex-col items-center justify-center gap-4">
         <button
+          type="button"
           onClick={state === "idle" ? start : stop}
           disabled={state === "processing" || state === "speaking"}
-          aria-label="Voice"
+          aria-label={state === "listening" ? t("mobile.voice.tapToStop") : t("mobile.voice.tapToTalk")}
           className={cn(
-            "relative flex h-40 w-40 items-center justify-center rounded-full shadow-2xl transition-all",
-            state === "idle" && "bg-gradient-to-br from-primary to-cyan-700 active:scale-95",
-            state === "listening" && "bg-destructive animate-pulse scale-110",
-            state === "processing" && "bg-risk-medium",
-            state === "speaking" && "bg-risk-low",
+            "flex h-36 w-36 items-center justify-center rounded-full text-primary-foreground shadow-pop transition-[transform,background-color] duration-200 active:scale-95",
+            state === "listening" ? "scale-105 bg-danger" : state === "processing" ? "bg-warning" : state === "speaking" ? "bg-success" : "bg-primary",
           )}
         >
-          {state === "idle" && <Mic className="h-16 w-16 text-white" />}
-          {state === "listening" && <Mic className="h-16 w-16 text-white" />}
-          {state === "processing" && <Loader2 className="h-16 w-16 text-white animate-spin" />}
-          {state === "speaking" && <Volume2 className="h-16 w-16 text-white" />}
+          {state === "listening" ? (
+            <Square className="h-12 w-12" fill="currentColor" />
+          ) : state === "processing" ? (
+            <Loader2 className="h-14 w-14 animate-spin" />
+          ) : state === "speaking" ? (
+            <Volume2 className="h-14 w-14" />
+          ) : (
+            <Mic className="h-14 w-14" />
+          )}
         </button>
-
-        <div className="text-sm text-muted-foreground">
-          {state === "idle"      && (lang === "ar" ? "اضغط للتحدّث" : "Tap to talk")}
-          {state === "listening" && (lang === "ar" ? "أتحدّث الآن…" : "Listening…")}
-          {state === "processing" && (lang === "ar" ? "أفكّر…" : "Thinking…")}
-          {state === "speaking"  && (lang === "ar" ? "AEGIS يرد" : "AEGIS responding")}
+        <div className="text-lg font-medium" aria-live="polite">
+          {state === "listening" ? t("mobile.voice.listening") : statusText}
         </div>
-
-        {/* Transcript / response card */}
-        {(transcript || response || error) && (
-          <div className="w-full max-w-md space-y-2 px-1">
-            {transcript && (
-              <div className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-left">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                  {lang === "ar" ? "قلت" : "You said"}
-                </div>
-                <div dir={lang === "ar" || lang === "ur" ? "rtl" : "ltr"} className="text-sm">
-                  {transcript}
-                </div>
-              </div>
-            )}
-            {response?.speech && (
-              <div className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-left">
-                <div className="text-[10px] uppercase tracking-wider text-primary mb-1 flex items-center gap-1">
-                  <Sparkles className="h-3 w-3" /> AEGIS
-                </div>
-                <div dir={lang === "ar" || lang === "ur" ? "rtl" : "ltr"} className="text-sm">
-                  {response.speech[lang] ?? response.speech.en}
-                </div>
-                {response.intent === "NAVIGATE" && response.target && (
-                  <div className="mt-1 text-[10px] text-muted-foreground">
-                    → {response.target}
-                  </div>
-                )}
-              </div>
-            )}
-            {error && (
-              <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-left">
-                <div className="text-[10px] uppercase tracking-wider text-destructive mb-1 flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" /> {lang === "ar" ? "خطأ" : "Error"}
-                </div>
-                <div dir={lang === "ar" || lang === "ur" ? "rtl" : "ltr"} className="whitespace-pre-line text-xs text-destructive leading-relaxed">
-                  {friendlyError(error)}
-                </div>
-              </div>
-            )}
-            <button
-              onClick={clear}
-              className="mx-auto flex items-center gap-1 rounded-full px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-3 w-3" /> Clear
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Hints */}
-      <div className="w-full rounded-md border border-border/40 bg-muted/20 p-3 text-left">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
-          {lang === "ar" ? "أمثلة" : "Try saying"}
-        </div>
-        <ul className="space-y-1 text-xs text-muted-foreground">
-          {lang === "ar" ? (
-            <>
-              <li>• &ldquo;أنا بأمان&rdquo;</li>
-              <li>• &ldquo;كم حادثة اليوم&rdquo;</li>
-              <li>• &ldquo;افتح خطوط الأنابيب&rdquo;</li>
-            </>
-          ) : (
-            <>
-              <li>• &ldquo;I am safe&rdquo;</li>
-              <li>• &ldquo;How many incidents today?&rdquo;</li>
-              <li>• &ldquo;Open pipelines&rdquo;</li>
-            </>
+      {(transcript || reply || error) && (
+        <div className="w-full space-y-3 text-start">
+          {transcript && (
+            <div className="rounded-2xl bg-muted p-4">
+              <div className="text-sm text-muted-foreground">{t("mobile.voice.youSaid")}</div>
+              <div className="mt-1" dir="auto">{transcript}</div>
+            </div>
           )}
+          {reply && (
+            <div className="rounded-2xl border bg-card p-4 shadow-card">
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <BrainCircuit className="h-4 w-4" /> {t("mobile.voice.reply")}
+              </div>
+              <div className="mt-1" dir="auto">{reply}</div>
+            </div>
+          )}
+          {error && (
+            <div role="alert" className="rounded-2xl bg-danger/10 p-4 text-danger">
+              <div className="text-sm font-medium">{t("mobile.voice.errorTitle")}</div>
+              <div className="mt-1 text-sm">{error}</div>
+            </div>
+          )}
+          <Button variant="ghost" className="mx-auto flex" onClick={clear}>
+            <X /> {t("mobile.voice.clear")}
+          </Button>
+        </div>
+      )}
+
+      <div className="w-full rounded-2xl bg-muted p-4 text-start">
+        <div className="text-sm font-medium">{t("mobile.voice.examplesTitle")}</div>
+        <ul className="mt-2 space-y-1.5 text-muted-foreground">
+          {EXAMPLES.map((k) => (
+            <li key={k}>“{t(k)}”</li>
+          ))}
         </ul>
       </div>
     </div>

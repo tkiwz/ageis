@@ -89,11 +89,46 @@ export async function tryOrQueue(
     return { online: true, result: await res.json() };
   } catch {
     const queueId = await enqueueMutation({ url, method, body, headers });
-    if ("serviceWorker" in navigator && "sync" in (await navigator.serviceWorker.ready)) {
-      const reg = await navigator.serviceWorker.ready;
-      // @ts-expect-error: sync is non-standard but widely supported
-      reg.sync.register("aegis-replay-mutations").catch(() => { /* swallow */ });
-    }
+    notifyQueueChanged();
     return { online: false, queueId };
   }
+}
+
+/** Fired on window whenever the queue changes (shell shows the count). */
+export const QUEUE_EVENT = "aegis-queue-changed";
+function notifyQueueChanged() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(QUEUE_EVENT));
+}
+
+let replaying = false;
+
+/**
+ * Send every queued request again (called when the phone is back online and
+ * when the mobile app opens). Requests carry a clientId, so a request that
+ * already reached the server is not created twice. Network/5xx/401 failures
+ * stay queued; other 4xx are dropped (they would never succeed).
+ */
+export async function replayQueue(): Promise<{ sent: number; left: number }> {
+  if (replaying || typeof navigator === "undefined" || !navigator.onLine) return { sent: 0, left: await pendingCount() };
+  replaying = true;
+  let sent = 0;
+  try {
+    const items = await dequeueAll();
+    for (const item of items) {
+      try {
+        const res = await fetch(item.url, { method: item.method, body: JSON.stringify(item.body), headers: item.headers });
+        if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 408 && res.status !== 429)) {
+          sent += res.ok ? 1 : 0;
+          continue;
+        }
+        await enqueueMutation({ url: item.url, method: item.method, body: item.body, headers: item.headers });
+      } catch {
+        await enqueueMutation({ url: item.url, method: item.method, body: item.body, headers: item.headers });
+      }
+    }
+  } finally {
+    replaying = false;
+    notifyQueueChanged();
+  }
+  return { sent, left: await pendingCount() };
 }

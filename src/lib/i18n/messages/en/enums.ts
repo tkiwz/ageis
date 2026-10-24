@@ -65,6 +65,8 @@ export const enums = {
     WARNING: "Warning",
   },
   incidentType: {
+    INJURY: "Injury",
+    OTHER: "Other",
     NEAR_MISS: "Near miss",
     MINOR: "Minor injury",
     MAJOR: "Major injury",

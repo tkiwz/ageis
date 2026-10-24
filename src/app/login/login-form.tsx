@@ -78,7 +78,7 @@ export function LoginForm() {
 
           <div className="space-y-2">
             <Label htmlFor="password">{t("auth.password")}</Label>
-            <div className="relative">
+            <div className="relative" dir="ltr">
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}

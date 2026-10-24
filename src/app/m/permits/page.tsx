@@ -1,94 +1,84 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ClipboardCheck, Clock, MapPin, AlertCircle, Loader2 } from "lucide-react";
+import { AlertTriangle, Clock, FileCheck2, MapPin } from "lucide-react";
+import { useApi } from "@/hooks/use-api";
+import { useFormat, useI18n } from "@/lib/i18n/client";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { cn } from "@/lib/utils";
 
 interface Permit {
   id: string;
   permitNumber: string;
   title: string;
   type: string;
-  status: string;
   riskLevel: string;
   location: string;
-  validFrom: string;
   validUntil: string;
   site?: { code: string; name: string; nameAr?: string | null };
 }
 
-const RISK_COLOR: Record<string, string> = {
-  LOW: "border-risk-low/40 text-risk-low",
-  MEDIUM: "border-risk-medium/40 text-risk-medium",
-  HIGH: "border-risk-high/40 text-risk-high",
-  CRITICAL: "border-destructive/40 text-destructive",
-};
+const SOON_MS = 60 * 60 * 1000;
 
 export default function MyPermitsPage() {
-  const [permits, setPermits] = useState<Permit[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/permits?mine=1&status=ACTIVE", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => { if (!cancelled && j.ok) setPermits(j.data.permits ?? j.data ?? []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+  const { t, isAr } = useI18n();
+  const f = useFormat();
+  const { data, error, loading, refresh } = useApi<{ permits: Permit[] }>("/api/permits?mine=1&status=ACTIVE", { refreshMs: 60_000 });
+  const permits = data?.permits ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <h1 className="font-display text-2xl flex items-center gap-2">
-          <ClipboardCheck className="h-6 w-6 text-primary" />
-          My active permits
-        </h1>
-        <p dir="rtl" className="mt-1 text-sm text-muted-foreground">تصاريحي النشطة</p>
+        <h1 className="text-2xl font-semibold">{t("mobile.permits.title")}</h1>
+        <p className="mt-1 text-muted-foreground">{t("mobile.permits.description")}</p>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      {error && !data && <ErrorState onRetry={refresh} />}
+
+      {loading && !data ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
         </div>
-      ) : permits.length === 0 ? (
-        <div className="rounded-xl border border-border/40 bg-muted/20 p-6 text-center text-sm text-muted-foreground">
-          No active permits.
-          <div dir="rtl" className="mt-1">لا توجد تصاريح نشطة.</div>
-        </div>
+      ) : data && permits.length === 0 ? (
+        <EmptyState icon={FileCheck2} title={t("mobile.permits.emptyTitle")} description={t("mobile.permits.emptyBody")} />
       ) : (
-        <div className="space-y-2">
+        <ul className="space-y-3">
           {permits.map((p) => {
-            const hoursLeft = Math.max(0, Math.round((new Date(p.validUntil).getTime() - Date.now()) / 3_600_000));
-            const expiringSoon = hoursLeft < 24;
+            const left = new Date(p.validUntil).getTime() - Date.now();
+            const expired = left <= 0;
+            const soon = !expired && left < SOON_MS;
             return (
-              <div
-                key={p.id}
-                className="rounded-xl border border-border/40 bg-background/40 p-4 active:scale-[0.99] transition-transform"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-mono text-muted-foreground">{p.permitNumber}</div>
-                    <div className="mt-1 truncate font-semibold">{p.title}</div>
+              <li key={p.id} className={cn("rounded-2xl border bg-card p-4 shadow-card", (expired || soon) && "border-s-4", expired ? "border-s-danger" : soon && "border-s-warning")}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <bdi className="font-mono text-sm text-muted-foreground" dir="ltr">{p.permitNumber}</bdi>
+                    <div className="mt-0.5 text-lg font-semibold leading-snug">{p.title}</div>
+                    <div className="mt-0.5 text-sm text-muted-foreground">{f.enum("permitType", p.type)}</div>
                   </div>
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${RISK_COLOR[p.riskLevel] ?? ""}`}>
-                    {p.riskLevel}
+                  <StatusBadge value={p.riskLevel} group="severity" className="shrink-0 text-sm" />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="h-4 w-4" />
+                    {p.site ? (isAr ? p.site.nameAr || p.site.name : p.site.name) : p.location}
+                  </span>
+                  <span className={cn("flex items-center gap-1.5", expired ? "text-danger" : soon && "text-warning")}>
+                    <Clock className="h-4 w-4" />
+                    {expired ? t("mobile.permits.ended", { time: f.relative(p.validUntil) }) : t("mobile.permits.endsIn", { time: f.relative(p.validUntil) })}
                   </span>
                 </div>
-                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {p.location}</span>
-                  <span className={`flex items-center gap-1 ${expiringSoon ? "text-risk-medium" : ""}`}>
-                    <Clock className="h-3 w-3" /> {hoursLeft}h left
-                  </span>
-                </div>
-                {expiringSoon && (
-                  <div className="mt-2 flex items-center gap-1 text-xs text-risk-medium">
-                    <AlertCircle className="h-3 w-3" /> Expires soon — request extension if needed
-                  </div>
+                {(expired || soon) && (
+                  <p className={cn("mt-3 flex gap-2 rounded-xl p-3 text-sm font-medium", expired ? "bg-danger/10 text-danger" : "bg-warning/15 text-warning")}>
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {expired ? t("mobile.permits.expired") : t("mobile.permits.expiringSoon")}
+                  </p>
                 )}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );
