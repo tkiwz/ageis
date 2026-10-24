@@ -157,6 +157,7 @@ export const coreNs: CoreMessages = {
     CRITICAL: "حرج",
   },
   tabs: {
+    dronesShowcase: "عرض توضيحي بطائرات تجريبية. لا ينشئ تنبيهات ولا يرسل رسائل ولا يحفظ أي بيانات.",
     label: "الأقسام",
     incidents: "الحوادث",
     investigations: "التحقيقات",

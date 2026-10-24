@@ -8,6 +8,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Radio, RotateCcw, Play, AlertTriangle, Flame, Shield, Siren, Activity, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MapDrone, MapDetection } from "@/components/drones/drone-map";
+import { Info } from "lucide-react";
+import { useT } from "@/lib/i18n/client";
 
 const DroneMap = dynamic(
   () => import("@/components/drones/drone-map").then((m) => ({ default: m.DroneMap })),
@@ -87,6 +89,7 @@ function moveTo(from: { lat: number; lng: number }, to: { lat: number; lng: numb
 }
 
 export default function DronesPage() {
+  const t = useT();
   const [drones, setDrones] = useState<Drone[]>(INITIAL_DRONES);
   const [selected, setSelected] = useState<string | null>(null);
   const [detections, setDetections] = useState<DetectionEvent[]>([]);
@@ -148,7 +151,7 @@ export default function DronesPage() {
     );
   }
 
-  async function triggerScenario(type: DetectionEvent["type"]) {
+  function triggerScenario(type: DetectionEvent["type"]) {
     const drone = drones.find((d) => d.status === "PATROLLING") ?? drones[0];
     const severity = type === "OIL_LEAK" || type === "GAS_LEAK" ? "CRITICAL" : "HIGH";
 
@@ -167,42 +170,7 @@ export default function DronesPage() {
     setFlashDrone(drone.id);
     setTimeout(() => setFlashDrone(null), 2500);
 
-    const emoji: Record<string, string> = {
-      OIL_LEAK: "🛢️", GAS_LEAK: "💨",
-      PPE_VIOLATION: "🦺", PERIMETER_BREACH: "🚧",
-    };
-
-    const waMsg =
-      `${emoji[type] ?? "⚠️"} *AEGIS ALERT — ${severity}*\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `🛸 Drone: ${drone.code} (${drone.name})\n` +
-      `⚠️ Detection: ${type.replace(/_/g, " ")}\n` +
-      `📍 Site: ${drone.siteName}\n` +
-      `🗺️ Position: ${drone.lat.toFixed(4)}N, ${drone.lng.toFixed(4)}E\n` +
-      `🔋 Battery: ${drone.battery.toFixed(0)}%\n` +
-      `⏰ Time: ${new Date().toLocaleTimeString()}\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `_AEGIS HSSE Platform — Oman_`;
-
-    await Promise.allSettled([
-      fetch("/api/notify/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ message: waMsg }),
-      }),
-      fetch("/api/alerts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          type: severity === "CRITICAL" ? "CRITICAL" : "WARNING",
-          title: `🛸 Drone: ${type.replace(/_/g, " ")}`,
-          message: `${drone.code} detected ${type.replace(/_/g, " ")} near ${drone.siteName}.`,
-          isAutonomous: true,
-        }),
-      }),
-    ]);
+    // Showcase only: no alerts, no WhatsApp, nothing stored.
   }
 
   const patrolCount = drones.filter((d) => d.status === "PATROLLING").length;
@@ -210,6 +178,10 @@ export default function DronesPage() {
 
   return (
     <div className="container mx-auto max-w-7xl px-6 py-8">
+      <div role="note" className="mb-4 flex items-start gap-2 rounded-xl border border-info/30 bg-info/10 px-4 py-3 text-sm text-info">
+        <Info className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>{t("tabs.dronesShowcase")}</span>
+      </div>
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="rounded-md border border-primary/30 bg-primary/10 p-3">
@@ -246,7 +218,7 @@ export default function DronesPage() {
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Activity className="h-4 w-4 text-primary" />
                 Scenario Simulator
-                <span className="font-normal text-[10px] text-muted-foreground">— WhatsApp + DB alert</span>
+
               </CardTitle>
             </CardHeader>
             <CardContent>

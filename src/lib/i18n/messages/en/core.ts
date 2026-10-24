@@ -157,6 +157,7 @@ export const coreNs = {
     CRITICAL: "Critical",
   },
   tabs: {
+    dronesShowcase: "Showcase view with sample drones. It does not create alerts, send messages or store anything.",
     label: "Sections",
     incidents: "Incidents",
     investigations: "Investigations",
