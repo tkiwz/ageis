@@ -2,7 +2,8 @@
 /**
  * Save the GLM fallback key into .env (asks for it, hidden while typing).
  *
- *   npm run set-ai-key
+ *   npm run set-ai-key              (asks for the key)
+ *   npm run set-ai-key -- <KEY>     (key on the same line)
  *
  * Adds or replaces ZHIPU_API_KEY in .env. The key is never printed.
  */
@@ -35,7 +36,8 @@ function askHidden(question) {
   });
 }
 
-const key = await askHidden("Paste the GLM (Zhipu) API key and press Enter: ");
+const fromArg = process.argv[2]?.trim();
+const key = fromArg || (await askHidden("Paste the GLM (Zhipu) API key and press Enter: "));
 if (!/^[\w-]+\.[\w-]+$/.test(key)) {
   console.error("✗ That doesn't look like a Zhipu key (format: xxxx.yyyy). Nothing was changed.");
   process.exit(1);
