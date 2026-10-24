@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { glmChat, glmEnabled } from "./glm-client";
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6";
 
@@ -33,7 +34,43 @@ interface ChatResult {
   durationMs: number;
 }
 
+/**
+ * Claude errors that mean "this provider can't serve us right now" —
+ * no credit / billing, bad key, rate limit, overload, server or network error.
+ * For these we fall back to GLM (if configured).
+ */
+function isProviderUnavailable(err: unknown): boolean {
+  const e = err as { status?: number; message?: string };
+  const status = e?.status;
+  const msg = String(e?.message ?? "").toLowerCase();
+  if (!status) return true; // network / missing key
+  if (status === 400 && /credit|billing|balance|quota/.test(msg)) return true;
+  return [401, 402, 403, 429, 500, 502, 503, 504, 529].includes(status);
+}
+
+// After a provider failure, skip Claude for a while instead of failing every call.
+const CLAUDE_COOLDOWN_MS = 10 * 60 * 1000;
+let claudeDownUntil = 0;
+
+/**
+ * Chat with Claude; if Claude is unavailable (e.g. out of credit) and
+ * ZHIPU_API_KEY is set, answer with GLM instead. result.model says which.
+ */
 export async function claudeChat(opts: ChatOptions): Promise<ChatResult> {
+  if (glmEnabled() && (Date.now() < claudeDownUntil || !process.env.ANTHROPIC_API_KEY)) {
+    return glmChat(opts);
+  }
+  try {
+    return await claudeOnly(opts);
+  } catch (err) {
+    if (!glmEnabled() || !isProviderUnavailable(err)) throw err;
+    claudeDownUntil = Date.now() + CLAUDE_COOLDOWN_MS;
+    console.warn("[ai] Claude unavailable, using GLM fallback:", (err as Error)?.message?.slice(0, 120));
+    return glmChat(opts);
+  }
+}
+
+async function claudeOnly(opts: ChatOptions): Promise<ChatResult> {
   const client = getClient();
   const started = Date.now();
 

@@ -17,6 +17,11 @@ const PRICING: Record<string, ModelPricing> = {
   "claude-sonnet-4-6": { inputPerMTok: 3.0, outputPerMTok: 15.0 },
   "claude-opus-4-6": { inputPerMTok: 15.0, outputPerMTok: 75.0 },
   "claude-haiku-4-5-20251001": { inputPerMTok: 1.0, outputPerMTok: 5.0 },
+  // Zhipu GLM (fallback) — approx USD
+  "glm-4-flash":     { inputPerMTok: 0.0, outputPerMTok: 0.0 },
+  "glm-4-flashx":    { inputPerMTok: 0.014, outputPerMTok: 0.014 },
+  "glm-4-air":       { inputPerMTok: 0.07, outputPerMTok: 0.07 },
+  "glm-4-plus":      { inputPerMTok: 0.7, outputPerMTok: 0.7 },
   // Gemini
   "gemini-2.0-flash-exp": { inputPerMTok: 0.075, outputPerMTok: 0.3 },
   "gemini-2.0-flash":     { inputPerMTok: 0.075, outputPerMTok: 0.3 },
