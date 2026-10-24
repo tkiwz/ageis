@@ -87,6 +87,8 @@ async function submitToVeo(prompt: string): Promise<string> {
 }
 
 interface VideoGenRequest {
+  /** true → build the prompt and check the Veo key, but don't generate (no Veo cost). */
+  dryRun?: boolean;
   incidentId?: string;
   title?: string;
   description?: string;
@@ -156,6 +158,21 @@ export async function POST(req: NextRequest) {
       predictionId: null,
       videoUrl: null,
       message: "Add GOOGLE_AI_API_KEY with billing enabled.",
+    });
+  }
+
+  if (body.dryRun) {
+    // Free check: model metadata request (no generation, no billing)
+    const check = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${VEO_MODEL}?key=${GOOGLE_API_KEY}`,
+    ).catch(() => null);
+    return ok({
+      status: "DRY_RUN",
+      videoPrompt,
+      veoReachable: Boolean(check?.ok),
+      veoStatus: check?.status ?? null,
+      predictionId: null,
+      videoUrl: null,
     });
   }
 
