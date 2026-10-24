@@ -52,8 +52,14 @@ async function main() {
     const confirm = await askHidden("Confirm password: ");
     if (password !== confirm) throw new Error("Passwords do not match.");
 
-    const strength = checkPasswordStrength(password, { email, name });
-    if (!strength.ok) throw new Error(strength.reasons.join(" "));
+    // --allow-weak: owner's choice to accept a short password (min 6 chars)
+    if (process.argv.includes("--allow-weak")) {
+      if (password.length < 6) throw new Error("Password must be at least 6 characters.");
+      console.warn("⚠ Weak password accepted (--allow-weak). Change it later.");
+    } else {
+      const strength = checkPasswordStrength(password, { email, name });
+      if (!strength.ok) throw new Error(strength.reasons.join(" "));
+    }
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await db.user.upsert({
