@@ -7,7 +7,7 @@ import * as THREE from "three";
 /**
  * 3D AEGIS logo for the sign-in / splash screen only (lazy loaded).
  * Extruded shield + embossed "A" + a thin orbit ring with a bead.
- * Reduced motion → static pose, no frame loop.
+ * Reduced motion → slow orbit only.
  */
 
 const BLUE = "#3E6BE0";
@@ -44,7 +44,7 @@ function letterA() {
   return s;
 }
 
-function Mark({ animate }: { animate: boolean }) {
+function Mark({ calm }: { calm: boolean }) {
   const group = useRef<THREE.Group>(null);
   const orbit = useRef<THREE.Group>(null);
 
@@ -63,15 +63,15 @@ function Mark({ animate }: { animate: boolean }) {
     return g;
   }, []);
 
+  // Reduced motion: slower orbit, no sway (still alive, never jarring)
   useFrame((state) => {
-    if (!animate) return;
     const t = state.clock.getElapsedTime();
-    if (orbit.current) orbit.current.rotation.z = t * 0.9;
-    if (group.current) group.current.rotation.y = Math.sin(t * 0.6) * 0.32;
+    if (orbit.current) orbit.current.rotation.z = t * (calm ? 0.35 : 0.9);
+    if (group.current) group.current.rotation.y = calm ? -0.25 : Math.sin(t * 0.6) * 0.32;
   });
 
   return (
-    <group ref={group} rotation={[0, animate ? 0 : -0.25, 0]}>
+    <group ref={group}>
       <mesh geometry={shieldGeo}>
         <meshStandardMaterial color={BLUE} metalness={0.45} roughness={0.3} />
       </mesh>
@@ -100,14 +100,14 @@ export default function Logo3D({ className }: { className?: string }) {
     <div className={className} aria-hidden>
       <Canvas
         dpr={[1, 1.5]}
-        frameloop={reduce ? "demand" : "always"}
+        frameloop="always"
         camera={{ position: [0, 0.2, 8.2], fov: 30 }}
         gl={{ antialias: true, alpha: true, powerPreference: "low-power" }}
       >
         <hemisphereLight args={["#f2f6ff", "#10141c", 0.85]} />
         <directionalLight position={[3, 5, 6]} intensity={1.2} />
         <directionalLight position={[-5, 1, -3]} intensity={0.6} color="#9cc0ff" />
-        <Mark animate={!reduce} />
+        <Mark calm={reduce} />
       </Canvas>
     </div>
   );
