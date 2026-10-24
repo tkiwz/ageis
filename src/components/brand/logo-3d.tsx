@@ -66,8 +66,8 @@ function Mark({ calm }: { calm: boolean }) {
   // Reduced motion: slower orbit, no sway (still alive, never jarring)
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
-    if (orbit.current) orbit.current.rotation.z = t * (calm ? 0.35 : 0.9);
-    if (group.current) group.current.rotation.y = calm ? -0.25 : Math.sin(t * 0.6) * 0.32;
+    if (orbit.current) orbit.current.rotation.z = t * (calm ? 0.5 : 0.9);
+    if (group.current) group.current.rotation.y = Math.sin(t * (calm ? 0.35 : 0.6)) * (calm ? 0.22 : 0.32);
   });
 
   return (
@@ -85,8 +85,12 @@ function Mark({ calm }: { calm: boolean }) {
             <meshStandardMaterial color={RING} metalness={0.85} roughness={0.2} />
           </mesh>
           <mesh position={[2.25, 0, 0]}>
-            <sphereGeometry args={[0.15, 32, 32]} />
+            <sphereGeometry args={[0.2, 32, 32]} />
             <meshStandardMaterial color={BLUE} metalness={0.4} roughness={0.25} />
+          </mesh>
+          <mesh position={[-2.25, 0, 0]}>
+            <sphereGeometry args={[0.12, 32, 32]} />
+            <meshStandardMaterial color={SILVER} metalness={0.7} roughness={0.2} />
           </mesh>
         </group>
       </group>
