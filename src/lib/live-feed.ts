@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Shared client poller for /api/live. Every subscriber (alert sounds, bell…)
+ * Shared client poller for /api/feed. Every subscriber (alert sounds, bell…)
  * shares one request every POLL_MS; polling pauses while the tab is hidden
  * and refreshes as soon as it becomes visible again.
  */
@@ -27,7 +27,7 @@ async function poll(): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
-      const r = await fetch("/api/live", { cache: "no-store" });
+      const r = await fetch("/api/feed", { cache: "no-store" });
       const j = await r.json();
       if (j?.ok) {
         last = j.data as LiveFeed;

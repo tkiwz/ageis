@@ -1,0 +1,21 @@
+name: Keep warm
+
+# Pings the production readiness probe every ~5 minutes so the serverless
+# function and the database pool stay warm (first request after idle was ~5 s).
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping /api/ready
+        run: |
+          curl -sS -o /dev/null -w "ready %{http_code} in %{time_total}s\n" --max-time 30 "${SITE_URL}/api/ready" || true
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://ageis-five.vercel.app' }}

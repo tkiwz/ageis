@@ -3,6 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiResponse } from "@/types";
 
+/** Background polls never run faster than this (each poll is a round trip to the server). */
+const MIN_POLL_MS = 15_000;
+
+/** Identical GETs started at the same moment (two widgets, one URL) share one request. */
+const inFlight = new Map<string, Promise<unknown>>();
+function sharedGet(url: string): Promise<unknown> {
+  let p = inFlight.get(url);
+  if (!p) {
+    p = fetch(url, { credentials: "include" })
+      .then((r) => r.json().catch(() => ({ ok: false, error: { message: `HTTP ${r.status}` } })))
+      .finally(() => inFlight.delete(url));
+    inFlight.set(url, p);
+  }
+  return p;
+}
+
 interface UseApiResult<T> {
   data: T | null;
   error: string | null;
@@ -44,14 +60,13 @@ export function useApi<T>(
     if (!hasData.current) setLoading(true);
 
     try {
-      const res  = await fetch(urlRef.current, { credentials: "include" });
-      const json = (await res.json()) as ApiResponse<T>;
+      const json = (await sharedGet(urlRef.current)) as ApiResponse<T>;
       if (!mounted.current) return;
 
       if (!json.ok || !json.data) {
         // Only surface errors before we ever had data
         if (!hasData.current) {
-          setError(json.error?.message ?? `HTTP ${res.status}`);
+          setError(json.error?.message ?? "Request failed");
           setData(null);
         }
       } else {
@@ -81,11 +96,18 @@ export function useApi<T>(
   }, [url, enabled, doFetch]);
 
   // Background polling — interval calls doFetch directly,
-  // NO state variable incremented → zero re-renders on tick ─────
+  // NO state variable incremented → zero re-renders on tick.
+  // Paused while the tab is hidden; refreshes as soon as it is visible again.
   useEffect(() => {
     if (!refreshMs || !enabled) return;
-    const t = setInterval(doFetch, refreshMs);
-    return () => clearInterval(t);
+    const ms = Math.max(refreshMs, MIN_POLL_MS);
+    let t: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (t === null && !document.hidden) t = setInterval(doFetch, ms); };
+    const stop = () => { if (t !== null) clearInterval(t); t = null; };
+    const onVisibility = () => { if (document.hidden) stop(); else { doFetch(); start(); } };
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVisibility); };
   }, [refreshMs, enabled, doFetch]);
 
   return { data, error, loading, refresh: doFetch };

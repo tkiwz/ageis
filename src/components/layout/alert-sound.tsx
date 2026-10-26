@@ -17,7 +17,7 @@ export function AlertSound() {
   const firstLoad = useRef(true);
 
   useEffect(() => {
-    // Shared app-shell poll (/api/live), paused while the tab is hidden
+    // Shared app-shell poll (/api/feed), paused while the tab is hidden
     function onFeed(feed: LiveFeed) {
       try {
         const alerts = feed.alerts;

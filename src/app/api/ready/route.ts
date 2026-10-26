@@ -27,7 +27,8 @@ export async function GET() {
     await db.$queryRaw`SELECT 1`;
     checks.database = { ok: true };
   } catch (err) {
-    checks.database = { ok: false, detail: (err as Error).message };
+    log.warn("Readiness DB check failed", { error: (err as Error).message });
+    checks.database = { ok: false, detail: "unreachable" };
     overall = false;
   }
 

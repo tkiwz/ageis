@@ -30,7 +30,7 @@ export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Shared app-shell poll (/api/live) — no separate request for the bell
+  // Shared app-shell poll (/api/feed) — no separate request for the bell
   useEffect(() => subscribeLiveFeed((feed) => {
     setItems(feed.notifications);
     setUnread(feed.unreadCount);
