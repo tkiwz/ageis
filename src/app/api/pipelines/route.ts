@@ -6,6 +6,7 @@ import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { requireScopedAuth } from "@/lib/scoped-auth";
 import { pipelineCreateSchema, zodMessage } from "@/lib/validations/api";
+import { syncSimulatedPipelines } from "@/lib/simulation/pipeline-sim";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,8 @@ export async function GET(req: NextRequest) {
 
     const scope = await requireScopedAuth();
     if (scope instanceof Response) return scope;
+    // Simulated lines get their readings brought up to date on read (at most once a minute)
+    await syncSimulatedPipelines().catch((e) => console.error("[pipeline-sim]", e?.message));
 
     const where: any = scope.unrestricted
       ? {}

@@ -109,7 +109,7 @@ export default function RiskAssessmentPage() {
   const loadSites = useCallback(async () => {
     const r = await fetch("/api/sites");
     const j = await r.json();
-    if (j.ok) setSites(j.data.sites ?? []);
+    if (j.ok) setSites(Array.isArray(j.data) ? j.data : (j.data.sites ?? []));
   }, []);
 
   const loadPermits = useCallback(async () => {

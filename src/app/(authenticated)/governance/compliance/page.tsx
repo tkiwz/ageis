@@ -229,7 +229,7 @@ function NewItemForm({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/sites").then((r) => r.json()).then((j) => j.ok && setSites(j.data.sites ?? []));
+    fetch("/api/sites").then((r) => r.json()).then((j) => j.ok && setSites(Array.isArray(j.data) ? j.data : (j.data.sites ?? [])));
     fetch("/api/tasks?members=1").then((r) => r.json()).then((j) => j.ok && setUsers(j.data.users ?? []));
   }, []);
 

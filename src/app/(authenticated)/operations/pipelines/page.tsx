@@ -19,10 +19,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { TONE_DOT, TONE_SOFT } from "@/lib/ui/tone";
 import { cn } from "@/lib/utils";
+import { SimulatedBadge } from "@/components/pipelines/simulated-badge";
 
 interface Pipeline {
   id: string;
   code: string;
+  isSimulated?: boolean;
   name: string;
   nameAr: string | null;
   length: number;
@@ -324,6 +326,7 @@ function PipelineCard({ pipeline: p, name }: { pipeline: Pipeline; name: string 
                 {p.code}
               </span>
               <StatusBadge value={p.status} />
+              {p.isSimulated && <SimulatedBadge />}
               {leaks > 0 && (
                 <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", TONE_SOFT.danger)}>
                   <span className={cn("h-1.5 w-1.5 rounded-full", TONE_DOT.danger)} aria-hidden />

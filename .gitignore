@@ -64,3 +64,6 @@ test-results/
 
 # Agent worktrees
 .claude/worktrees/
+
+# local data backups (contain real records)
+backups/

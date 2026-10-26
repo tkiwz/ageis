@@ -223,7 +223,7 @@ function NewInspectionForm({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/sites").then((r) => r.json()).then((j) => j.ok && setSites(j.data.sites ?? []));
+    fetch("/api/sites").then((r) => r.json()).then((j) => j.ok && setSites(Array.isArray(j.data) ? j.data : (j.data.sites ?? [])));
   }, []);
 
   async function submit(e: FormEvent) {

@@ -24,6 +24,7 @@ interface Pipeline {
   nameAr: string | null;
   length: number;
   productType: string;
+  isSimulated?: boolean;
   pressurePoints: Array<{
     id: string;
     code: string;
@@ -128,6 +129,7 @@ export default function Pipeline3DPage() {
           hasLeak={!!activeLeak}
           leakKm={activeLeak?.estimatedKmFromStart || 0}
           leakSeverity={severity}
+          simulated={pipeline.isSimulated}
         />
       </div>
 

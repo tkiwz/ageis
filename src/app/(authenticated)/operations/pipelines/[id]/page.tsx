@@ -25,6 +25,7 @@ import { ShareInsightButton } from "@/components/knowledge/share-insight-button"
 import { cn } from "@/lib/utils";
 import type { ApiResponse } from "@/types";
 import type { Role } from "@/lib/constants";
+import { SimulatedBadge } from "@/components/pipelines/simulated-badge";
 
 interface PressurePoint {
   id: string;
@@ -55,6 +56,9 @@ interface LeakAlert {
 interface Pipeline {
   id: string;
   code: string;
+  isSimulated?: boolean;
+  operator?: string | null;
+  source?: string | null;
   name: string;
   nameAr: string | null;
   length: number;
@@ -222,6 +226,8 @@ export default function PipelineDetailPage() {
           <span className="flex flex-wrap items-center gap-2">
             <span dir="ltr" className="font-mono">{pipeline.code}</span>
             <StatusBadge value={pipeline.status} />
+            {pipeline.isSimulated && <SimulatedBadge />}
+            {pipeline.operator && <span className="text-xs text-muted-foreground">{pipeline.operator}</span>}
             {hasActiveLeak && (
               <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", TONE_SOFT.danger)}>
                 <span className={cn("h-1.5 w-1.5 rounded-full animate-attention", TONE_DOT.danger)} aria-hidden />

@@ -12,6 +12,8 @@ export const assets: AssetsMessages = {
   },
 
   pipelines: {
+    simulated: "قراءات محاكاة",
+    simulatedHint: "الموقع والمواصفات بيانات عامة؛ الضغط والتدفق والحرارة محاكاة (لا يوجد ربط مباشر بنظام التحكم SCADA).",
     title: "خطوط الأنابيب",
     description: "حالة الضغط والتدفق والتسرّبات في شبكة خطوط الأنابيب",
     kpi: {

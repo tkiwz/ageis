@@ -14,6 +14,8 @@ export const assets = {
   },
 
   pipelines: {
+    simulated: "Simulated readings",
+    simulatedHint: "Location and specs are public data; pressure, flow and temperature are simulated (no live SCADA feed).",
     title: "Pipelines",
     description: "Pressure, flow and leak status across the pipeline network",
     kpi: {

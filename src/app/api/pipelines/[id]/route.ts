@@ -6,6 +6,7 @@ import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 import { pipelineUpdateSchema, zodMessage } from "@/lib/validations/api";
+import { syncSimulatedPipelines } from "@/lib/simulation/pipeline-sim";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const hidden = await denyUnlessSiteVisible("pipeline", id);
     if (hidden) return hidden;
+    // Simulated lines get their readings brought up to date on read (at most once a minute)
+    await syncSimulatedPipelines().catch((e) => console.error("[pipeline-sim]", e?.message));
 
     const pipeline = await db.pipeline.findUnique({
       where: { id },

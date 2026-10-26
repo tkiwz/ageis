@@ -31,6 +31,7 @@ import {
   IMAGERY_URL, loadElevation, loadImage, makeProjection, pickTiles, tileXToLng, tileYToLat,
   type BBox, type ElevationSampler, type Projection, type TileRange,
 } from "./geo";
+import { SimulatedBadge } from "@/components/pipelines/simulated-badge";
 
 export interface PressurePoint {
   id: string;
@@ -54,6 +55,8 @@ export interface Pipeline3DSceneProps {
   hasLeak?:       boolean;
   leakKm?:        number;
   leakSeverity?:  "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  /** Readings come from the simulator — shown as a badge. */
+  simulated?:     boolean;
 }
 
 interface PointAnalysis {
@@ -203,8 +206,10 @@ function healthScore(p: PressurePoint): number {
   if (v < lo || v > hi) return 1;
   const mid = (lo + hi) / 2;
   const half = Math.max((hi - lo) / 2, 1e-6);
-  const s = Math.abs(v - mid) / half;           // 0 centre … 1 at the limit
-  return Math.max(p.status === "WARNING" ? 0.55 : 0, Math.min(0.8, s * 0.8));
+  const dev = Math.abs(v - mid) / half;         // 0 centre … 1 at the limit
+  // The middle 60% of the band is plainly healthy; colour only ramps up close to a limit
+  const s = dev <= 0.6 ? 0 : ((dev - 0.6) / 0.4) * 0.8;
+  return Math.max(p.status === "WARNING" ? 0.55 : 0, Math.min(0.8, s));
 }
 
 const COL_OK = new THREE.Color(C.primary).lerp(new THREE.Color(C.steel), 0.55);
@@ -261,6 +266,7 @@ export function Pipeline3DScene({
   hasLeak = false,
   leakKm = 0,
   leakSeverity = "HIGH",
+  simulated = false,
 }: Pipeline3DSceneProps) {
   const { t, isAr } = useI18n();
   const f = useFormat();
@@ -506,7 +512,10 @@ export function Pipeline3DScene({
       <div className={`absolute inset-x-3 z-20 flex items-start justify-between gap-3 ${alarmLevel && !alarmDismissed ? "top-14" : "top-3"}`}>
         <Panel className="px-3 py-2">
           <div className="text-[11px] text-[#8b97a8]">{t("assets.pipeline3d.scene.pipeline")}</div>
-          <div className="font-mono text-sm font-semibold">{pipelineName}</div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-semibold">{pipelineName}</span>
+            {simulated && <SimulatedBadge dark className="text-[10px]" />}
+          </div>
           <div className="text-[11px] text-[#8b97a8]">
             {kmLabel(pipelineLength)}
             <span className="hidden sm:inline"> · {route.geographic ? t("assets.pipeline3d.view.route") : t("assets.pipeline3d.view.straight")}</span>
