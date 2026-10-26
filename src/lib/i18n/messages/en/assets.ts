@@ -133,7 +133,21 @@ export const assets = {
   },
 
   pipeline3d: {
+    timeline: {
+      label: "Pressure history (one day)",
+      play: "Play history",
+      pause: "Pause",
+      live: "Live",
+      backToLive: "Back to live",
+    },
     view: {
+      mapLoading: "Loading satellite map…",
+      mapMode: "Satellite",
+      gridMode: "Grid",
+      labelsOn: "Show labels",
+      labelsOff: "Hide labels",
+      glowOn: "Glow",
+      glowOff: "No glow",
       reset: "Reset view",
       focusLeak: "Go to leak",
       flowOn: "Show flow",

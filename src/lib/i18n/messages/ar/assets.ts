@@ -131,7 +131,21 @@ export const assets: AssetsMessages = {
   },
 
   pipeline3d: {
+    timeline: {
+      label: "سجل الضغط (يوم واحد)",
+      play: "تشغيل السجل",
+      pause: "إيقاف مؤقت",
+      live: "مباشر",
+      backToLive: "العودة للمباشر",
+    },
     view: {
+      mapLoading: "جارٍ تحميل خريطة القمر الصناعي…",
+      mapMode: "قمر صناعي",
+      gridMode: "شبكة",
+      labelsOn: "إظهار التسميات",
+      labelsOff: "إخفاء التسميات",
+      glowOn: "توهّج",
+      glowOff: "بدون توهّج",
       reset: "إعادة العرض",
       focusLeak: "الانتقال للتسرّب",
       flowOn: "إظهار التدفق",

@@ -13,16 +13,24 @@
  */
 import { useRef, useState, useEffect, useCallback, useMemo, Component, type ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Grid } from "@react-three/drei";
+import { OrbitControls, Grid, Html } from "@react-three/drei";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import {
-  Activity, AlertTriangle, Bell, BellOff, Brain, Crosshair, Gamepad2, Loader2,
-  MapPin, Pause, Play, RotateCcw, Send, Waves, Wrench, X,
+  Activity, AlertTriangle, Bell, BellOff, Brain, Crosshair, Gamepad2, Grid3x3, History, Loader2,
+  Map as MapIcon, MapPin, Pause, Play, RotateCcw, Send, Sparkles, Tags, Waves, Wrench, X,
 } from "lucide-react";
 import { useFormat, useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/translate";
 import { useGamepadControls } from "./useGamepadControls";
+import {
+  IMAGERY_URL, loadElevation, loadImage, makeProjection, pickTiles, tileXToLng, tileYToLat,
+  type BBox, type ElevationSampler, type Projection, type TileRange,
+} from "./geo";
 
 export interface PressurePoint {
   id: string;
@@ -81,7 +89,11 @@ const RISK_COLORS: Record<string, string> = { LOW: C.ok, MEDIUM: C.warn, HIGH: "
 
 const SCENE_SIZE = 34;          // longest side of the route, in scene units
 const PIPE_RADIUS = 0.42;
-const GROUND_Y = -1.1;
+/** The pipe runs this far above the ground (flat mode: ground at y = -LIFT). */
+const LIFT = 1.1;
+const GROUND_Y = -LIFT;
+/** Tallest terrain relief allowed in the scene, in scene units (keeps steep areas readable). */
+const MAX_RELIEF = 6;
 
 // ─────────────────────────────────────────────────────────
 // Geometry: route from GPS, health along the pipe
@@ -91,6 +103,9 @@ interface Route {
   center: THREE.Vector3;
   span: number;
   geographic: boolean;
+  /** Only for geographic routes. */
+  projection: Projection | null;
+  bbox: BBox | null;
 }
 
 /** Projects sensor GPS points onto a local plane (km), then scales to the scene. */
@@ -100,9 +115,10 @@ function buildRoute(points: PressurePoint[], lengthKm: number): Route {
 
   let km: THREE.Vector3[] = [];
   let geographic = false;
+  let lat0 = 0, lng0 = 0;
   if (usable.length >= 2) {
-    const lat0 = usable.reduce((s, p) => s + p.latitude, 0) / usable.length;
-    const lng0 = usable.reduce((s, p) => s + p.longitude, 0) / usable.length;
+    lat0 = usable.reduce((s, p) => s + p.latitude, 0) / usable.length;
+    lng0 = usable.reduce((s, p) => s + p.longitude, 0) / usable.length;
     const kx = 111.32 * Math.cos((lat0 * Math.PI) / 180);
     const kz = 110.57;
     km = usable.map((p) => new THREE.Vector3((p.longitude - lng0) * kx, 0, -(p.latitude - lat0) * kz));
@@ -136,7 +152,47 @@ function buildRoute(points: PressurePoint[], lengthKm: number): Route {
   const scale = SCENE_SIZE / Math.max(size.x, size.z, 1e-6);
   const pts = km.map((v) => v.clone().sub(mid).multiplyScalar(scale));
   const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal", 0.5);
-  return { curve, center: new THREE.Vector3(0, 0, 0), span: Math.max(size.x, size.z) * scale, geographic };
+
+  let projection: Projection | null = null;
+  let bbox: BBox | null = null;
+  if (geographic) {
+    projection = makeProjection(lat0, lng0, scale, mid.x, mid.z);
+    // Ground area: route box padded on every side (and at least ~square)
+    const half = (Math.max(size.x, size.z) * scale) / 2 * 1.35;
+    const corners = [projection.toLatLng(-half, -half), projection.toLatLng(half, half)];
+    bbox = {
+      minLat: Math.min(corners[0].lat, corners[1].lat), maxLat: Math.max(corners[0].lat, corners[1].lat),
+      minLng: Math.min(corners[0].lng, corners[1].lng), maxLng: Math.max(corners[0].lng, corners[1].lng),
+    };
+  }
+  return { curve, center: new THREE.Vector3(0, 0, 0), span: Math.max(size.x, size.z) * scale, geographic, projection, bbox };
+}
+
+/** Terrain height model in scene units (null = flat ground). */
+interface Terrain {
+  /** Ground y at a scene x/z. */
+  groundAt: (x: number, z: number) => number;
+}
+
+function makeTerrain(route: Route, elev: ElevationSampler): Terrain | null {
+  const proj = route.projection;
+  if (!proj) return null;
+  const relief = Math.max(elev.max - elev.min, 1);
+  const exaggeration = Math.min(3, MAX_RELIEF / ((relief * proj.unitsPerKm) / 1000));
+  const unitsPerMetre = (proj.unitsPerKm / 1000) * exaggeration;
+  return {
+    groundAt: (x, z) => {
+      const { lat, lng } = proj.toLatLng(x, z);
+      return GROUND_Y + (elev.at(lat, lng) - elev.min) * unitsPerMetre;
+    },
+  };
+}
+
+/** Same route, lifted onto the terrain (dense resample so the pipe hugs the ground). */
+function liftRoute(route: Route, terrain: Terrain | null): Route {
+  if (!terrain) return route;
+  const pts = route.curve.getSpacedPoints(260).map((p) => new THREE.Vector3(p.x, terrain.groundAt(p.x, p.z) + LIFT, p.z));
+  return { ...route, curve: new THREE.CatmullRomCurve3(pts, false, "centripetal", 0.5) };
 }
 
 /** 0 = comfortably in range, ~0.6 = near a limit, 1 = out of range / no data at a critical sensor. */
@@ -224,7 +280,27 @@ export function Pipeline3DScene({
   const [listOpen,    setListOpen]    = useState(() => typeof window === "undefined" || window.innerWidth >= 768);
   const [legendOpen,  setLegendOpen]  = useState(() => typeof window === "undefined" || window.innerWidth >= 768);
 
-  const route = useMemo(() => buildRoute(pressurePoints, pipelineLength), [pressurePoints, pipelineLength]);
+  const isWide = typeof window === "undefined" || window.innerWidth >= 768;
+  const [mapMode,   setMapMode]   = useState(true);     // satellite + terrain (geographic routes only)
+  const [glow,      setGlow]      = useState(isWide);   // bloom is heavier — off by default on phones
+  const [labels,    setLabels]    = useState(true);
+  const [elevation, setElevation] = useState<ElevationSampler | null>(null);
+  const [geoFailed, setGeoFailed] = useState(false);
+  const [mapReady,  setMapReady]  = useState(false);
+
+  // Timeline: readings of the last 24 h; null time = live values
+  const history = usePressureHistory(pipelineId);
+  const [timeAt, setTimeAt] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const shownPoints = useMemo(
+    () => (timeAt === null || !history ? pressurePoints : pointsAt(pressurePoints, history, timeAt)),
+    [pressurePoints, history, timeAt],
+  );
+
+  const baseRoute = useMemo(() => buildRoute(pressurePoints, pipelineLength), [pressurePoints, pipelineLength]);
+  const useMap = mapMode && baseRoute.geographic && !geoFailed;
+  const terrain = useMemo(() => (useMap && elevation ? makeTerrain(baseRoute, elevation) : null), [useMap, elevation, baseRoute]);
+  const route = useMemo(() => liftRoute(baseRoute, terrain), [baseRoute, terrain]);
   const kmToU = useCallback((km: number) => (pipelineLength > 0 ? Math.min(1, Math.max(0, km / pipelineLength)) : 0), [pipelineLength]);
   const pointAt = useCallback((km: number) => route.curve.getPointAt(kmToU(km)), [route, kmToU]);
 
@@ -234,8 +310,8 @@ export function Pipeline3DScene({
   const audioCtxRef  = useRef<AudioContext | null>(null);
   const alarmLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const criticalPts = pressurePoints.filter((p) => p.status === "CRITICAL");
-  const warningPts  = pressurePoints.filter((p) => p.status === "WARNING");
+  const criticalPts = shownPoints.filter((p) => p.status === "CRITICAL");
+  const warningPts  = shownPoints.filter((p) => p.status === "WARNING");
   const alarmLevel  = hasLeak ? "LEAK" : criticalPts.length > 0 ? "CRITICAL" : warningPts.length > 0 ? "WARNING" : null;
 
   /** Control-room tone: triple 880 Hz pulse for leak/critical, single 660 Hz for warning. */
@@ -285,7 +361,7 @@ export function Pipeline3DScene({
   useEffect(() => { if (!alarmLevel) setAlarmDismissed(false); }, [alarmLevel]);
 
   // ── Actions ─────────────────────────────────────────────
-  const selected = selectedIdx !== null ? pressurePoints[selectedIdx] : null;
+  const selected = selectedIdx !== null ? shownPoints[selectedIdx] : null;
 
   const runAnalysis = useCallback(() => {
     if (!selected || aiLoading) return;
@@ -334,6 +410,18 @@ export function Pipeline3DScene({
       .finally(() => setTimeout(() => setWaStatus("idle"), 4000));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, waStatus, pipelineName, t]);
+
+  useEffect(() => {
+    if (!playing || !history) return;
+    const id = window.setInterval(() => {
+      setTimeAt((t) => {
+        const next = (t ?? history.from) + (history.to - history.from) / 120;
+        if (next >= history.to) { setPlaying(false); return null; }
+        return next;
+      });
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [playing, history]);
 
   const resetView = useCallback(() => {
     setResetTick((n) => n + 1);
@@ -429,6 +517,14 @@ export function Pipeline3DScene({
             label={autoRotate ? t("assets.pipeline3d.scene.rotateOff") : t("assets.pipeline3d.scene.rotateOn")} />
           <OverlayButton onClick={() => setShowFlow((v) => !v)} icon={Waves}
             label={showFlow ? t("assets.pipeline3d.view.flowOff") : t("assets.pipeline3d.view.flowOn")} />
+          {baseRoute.geographic && (
+            <OverlayButton onClick={() => setMapMode((v) => !v)} icon={useMap ? Grid3x3 : MapIcon}
+              label={useMap ? t("assets.pipeline3d.view.gridMode") : t("assets.pipeline3d.view.mapMode")} />
+          )}
+          <OverlayButton onClick={() => setLabels((v) => !v)} icon={Tags}
+            label={labels ? t("assets.pipeline3d.view.labelsOff") : t("assets.pipeline3d.view.labelsOn")} />
+          <OverlayButton onClick={() => setGlow((v) => !v)} icon={Sparkles}
+            label={glow ? t("assets.pipeline3d.view.glowOff") : t("assets.pipeline3d.view.glowOn")} />
           <OverlayButton onClick={resetView} icon={RotateCcw} label={t("assets.pipeline3d.view.reset")} />
         </div>
       </div>
@@ -444,7 +540,7 @@ export function Pipeline3DScene({
           </span>
         </button>
         {listOpen && <div className="mt-1.5 space-y-0.5">
-          {pressurePoints.map((p, i) => {
+          {shownPoints.map((p, i) => {
             const color = STATUS_COLORS[p.status] ?? C.ok;
             const isSelected = selectedIdx === i;
             const isFocused = focusedIdx === i;
@@ -499,6 +595,31 @@ export function Pipeline3DScene({
         </div>}
       </Panel>
 
+      {/* ── Timeline ── */}
+      {history && (
+        <TimelineBar
+          history={history}
+          timeAt={timeAt}
+          playing={playing}
+          onChange={(v) => { setPlaying(false); setTimeAt(v); }}
+          onPlay={() => { if (timeAt === null) setTimeAt(history.from); setPlaying((v) => !v); }}
+          onLive={() => { setPlaying(false); setTimeAt(null); }}
+        />
+      )}
+
+      {useMap && !mapReady && (
+        <div className="absolute start-1/2 top-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#11161f]/85 px-3 py-1.5 text-xs text-[#8b97a8] backdrop-blur rtl:translate-x-1/2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-[#5b8def]" /> {t("assets.pipeline3d.view.mapLoading")}
+        </div>
+      )}
+
+      {/* ── Map attribution ── */}
+      {useMap && (
+        <div className="pointer-events-none absolute bottom-0 start-1/2 z-10 -translate-x-1/2 px-2 pb-0.5 text-[9px] text-white/50 rtl:translate-x-1/2" dir="ltr">
+          Imagery © Esri, Maxar, Earthstar Geographics · Terrain © Mapzen, AWS
+        </div>
+      )}
+
       {/* ── Sensor HUD ── */}
       {selected && !aiAnalysis && !aiLoading && !aiError && (
         <SensorHUD
@@ -536,7 +657,8 @@ export function Pipeline3DScene({
         </div>
       )}
 
-      {/* ── Canvas ── */}
+      {/* ── Canvas ── (left-to-right box: 3D labels are positioned from the left edge) */}
+      <div className="absolute inset-0" dir="ltr">
       <SceneErrorBoundary
         fallback={
           <div className="flex h-full w-full items-center justify-center p-6">
@@ -550,7 +672,7 @@ export function Pipeline3DScene({
         <Canvas
           camera={{ position: [SCENE_SIZE * 0.45, SCENE_SIZE * 0.42, SCENE_SIZE * 0.62], fov: 42, near: 0.1, far: 400 }}
           dpr={[1, 2]}
-          shadows
+          shadows="percentage"
           gl={{ antialias: true, powerPreference: "high-performance", alpha: false }}
           onCreated={({ gl }) => {
             gl.setClearColor(C.bg);
@@ -577,12 +699,22 @@ export function Pipeline3DScene({
           />
           <directionalLight position={[-16, 10, -10]} intensity={0.45} color={C.primary} />
 
-          {/* Ground + engineering grid */}
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_Y - 0.01, 0]} receiveShadow>
+          {/* Ground: satellite terrain, or the engineering grid */}
+          {useMap && baseRoute.projection && baseRoute.bbox && (
+            <GeoGround
+              projection={baseRoute.projection}
+              bbox={baseRoute.bbox}
+              terrain={terrain}
+              onElevation={setElevation}
+              onFail={() => setGeoFailed(true)}
+              onReady={() => setMapReady(true)}
+            />
+          )}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_Y - (useMap ? 0.6 : 0.01), 0]} receiveShadow>
             <planeGeometry args={[400, 400]} />
             <meshStandardMaterial color={C.ground} roughness={1} metalness={0} />
           </mesh>
-          <Grid
+          {!useMap && <Grid
             position={[0, GROUND_Y, 0]}
             args={[200, 200]}
             cellSize={1}
@@ -594,9 +726,9 @@ export function Pipeline3DScene({
             fadeDistance={SCENE_SIZE * 2.4}
             fadeStrength={1.4}
             infiniteGrid
-          />
+          />}
 
-          <RoutePipe route={route} pressurePoints={pressurePoints} lengthKm={pipelineLength} leakKm={hasLeak ? leakKm : null} />
+          <RoutePipe route={route} pressurePoints={shownPoints} lengthKm={pipelineLength} leakKm={hasLeak ? leakKm : null} />
           <RouteShadowLine route={route} />
           <EndCaps route={route} />
 
@@ -604,7 +736,7 @@ export function Pipeline3DScene({
 
           <KmMarkers route={route} lengthKm={pipelineLength} />
 
-          {pressurePoints.map((p, i) => (
+          {shownPoints.map((p, i) => (
             <PressurePointMarker
               key={p.id}
               position={pointAt(p.positionKm)}
@@ -612,10 +744,12 @@ export function Pipeline3DScene({
               focused={focusedIdx === i && selectedIdx !== i}
               selected={selectedIdx === i}
               onClick={() => selectPoint(i)}
+              label={labels ? { code: p.code, value: p.currentPressure !== null ? `${p.currentPressure.toFixed(1)} ${t("assets.units.bar")}` : null } : null}
             />
           ))}
 
-          {hasLeak && <LeakIndicator position={pointAt(leakKm)} severity={leakSeverity} />}
+          {hasLeak && <LeakIndicator position={pointAt(leakKm)} severity={leakSeverity} label={labels ? t("assets.pipeline3d.scene.leakAt", { km: kmLabel(leakKm) }) : null} />}
+          {glow && <BloomEffect />}
 
           <CameraRig
             route={route}
@@ -638,6 +772,7 @@ export function Pipeline3DScene({
           />
         </Canvas>
       </SceneErrorBoundary>
+      </div>
     </div>
   );
 }
@@ -681,7 +816,7 @@ function RoutePipe({ route, pressurePoints, lengthKm, leakKm }: {
 /** Faint line on the ground under the pipe — reads like a right-of-way on a map. */
 function RouteShadowLine({ route }: { route: Route }) {
   const geometry = useMemo(() => {
-    const pts = route.curve.getSpacedPoints(300).map((p) => new THREE.Vector3(p.x, GROUND_Y + 0.02, p.z));
+    const pts = route.curve.getSpacedPoints(300).map((p) => new THREE.Vector3(p.x, p.y - LIFT + 0.06, p.z));
     return new THREE.BufferGeometry().setFromPoints(pts);
   }, [route]);
   useEffect(() => () => geometry.dispose(), [geometry]);
@@ -770,7 +905,7 @@ function KmMarkers({ route, lengthKm }: { route: Route; lengthKm: number }) {
   return (
     <>
       {marks.map((p, i) => (
-        <group key={i} position={[p.x, GROUND_Y, p.z]}>
+        <group key={i} position={[p.x, p.y - LIFT, p.z]}>
           <mesh position={[0.9, 0.35, 0]} castShadow>
             <cylinderGeometry args={[0.035, 0.035, 0.7, 8]} />
             <meshStandardMaterial color="#a9b4c4" metalness={0.4} roughness={0.5} />
@@ -786,8 +921,9 @@ function KmMarkers({ route, lengthKm }: { route: Route; lengthKm: number }) {
 }
 
 /** Pressure transmitter on a riser, LED in the status colour, light beam when critical. */
-function PressurePointMarker({ position, status, focused, selected, onClick }: {
+function PressurePointMarker({ position, status, focused, selected, onClick, label }: {
   position: THREE.Vector3; status: string; focused: boolean; selected: boolean; onClick: () => void;
+  label: { code: string; value: string | null } | null;
 }) {
   const ledRef = useRef<THREE.Mesh>(null);
   const ringRef = useRef<THREE.Mesh>(null);
@@ -842,6 +978,14 @@ function PressurePointMarker({ position, status, focused, selected, onClick }: {
           <meshBasicMaterial color={selected ? color : "#ffffff"} transparent opacity={0.85} toneMapped={false} />
         </mesh>
       )}
+      {label && (
+        <Html position={[0, top + 0.55, 0]} center zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
+          <div className="whitespace-nowrap rounded-md border border-white/10 bg-[#0b0e14]/80 px-1.5 py-0.5 text-center font-mono text-[10px] leading-tight text-[#e6ebf2] backdrop-blur-sm" dir="ltr">
+            <div className="font-semibold">{label.code}</div>
+            {label.value && <div style={{ color }}>{label.value}</div>}
+          </div>
+        </Html>
+      )}
       {status === "CRITICAL" && (
         <mesh position={[0, top + 2.2, 0]}>
           <cylinderGeometry args={[0.05, 0.35, 4.4, 16, 1, true]} />
@@ -853,7 +997,7 @@ function PressurePointMarker({ position, status, focused, selected, onClick }: {
 }
 
 /** Leak: hot spot on the pipe, rising vapour, beacon and expanding ground ring. */
-function LeakIndicator({ position, severity }: { position: THREE.Vector3; severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" }) {
+function LeakIndicator({ position, severity, label }: { position: THREE.Vector3; severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"; label: string | null }) {
   const beaconRef = useRef<THREE.Mesh>(null);
   const ringRef = useRef<THREE.Mesh>(null);
   const plumes = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)];
@@ -896,6 +1040,11 @@ function LeakIndicator({ position, severity }: { position: THREE.Vector3; severi
         <cylinderGeometry args={[0.05, 0.05, 2.6, 10]} />
         <meshStandardMaterial color="#1c2330" metalness={0.7} roughness={0.4} />
       </mesh>
+      {label && (
+        <Html position={[0, 4.1, 0]} center zIndexRange={[16, 0]} style={{ pointerEvents: "none" }}>
+          <div className="whitespace-nowrap rounded-md bg-[#c2413b] px-2 py-0.5 text-[11px] font-semibold text-white shadow-lg">{label}</div>
+        </Html>
+      )}
       <mesh ref={beaconRef} position={[0, 3.3, 0]}>
         <sphereGeometry args={[0.24, 20, 20]} />
         <meshStandardMaterial color={C.danger} emissive={C.danger} emissiveIntensity={2.5} toneMapped={false} />
@@ -1197,5 +1346,184 @@ function AIAnalysisPopup({ loading, analysis, error, pointCode, gamepadConnected
         )}
       </Panel>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Satellite terrain
+// ─────────────────────────────────────────────────────────
+interface GeoTile { key: string; texture: THREE.Texture; range: TileRange; x: number; y: number }
+
+/**
+ * Loads elevation (once) and satellite imagery tiles for the area, and draws
+ * one displaced plane per imagery tile. Hands the elevation sampler back so the
+ * pipe can follow the same ground.
+ */
+function GeoGround({ projection, bbox, terrain, onElevation, onFail, onReady }: {
+  projection: Projection; bbox: BBox; terrain: Terrain | null;
+  onElevation: (e: ElevationSampler) => void; onFail: () => void; onReady: () => void;
+}) {
+  const [tiles, setTiles] = useState<GeoTile[]>([]);
+  const { gl } = useThree();
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const imgRange = pickTiles(bbox, 16, 13);
+    const elevRange = pickTiles(bbox, 9, Math.min(imgRange.z, 11));
+    loadElevation(elevRange, ctrl.signal).then(onElevation).catch((e) => { if (e?.name !== "AbortError") onFail(); });
+
+    const jobs: Promise<GeoTile>[] = [];
+    for (let x = imgRange.x0; x <= imgRange.x1; x++) for (let y = imgRange.y0; y <= imgRange.y1; y++) {
+      jobs.push(loadImage(IMAGERY_URL(imgRange.z, x, y), ctrl.signal).then((img) => {
+        const texture = new THREE.Texture(img);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
+        texture.needsUpdate = true;
+        return { key: `${imgRange.z}/${x}/${y}`, texture, range: imgRange, x, y };
+      }));
+    }
+    Promise.all(jobs).then((t) => { setTiles(t); onReady(); }).catch((e) => { if (e?.name !== "AbortError") onFail(); });
+    return () => ctrl.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bbox, gl]);
+
+  useEffect(() => () => tiles.forEach((tl) => tl.texture.dispose()), [tiles]);
+
+  return (
+    <>
+      {tiles.map((tl) => <GeoTileMesh key={tl.key} tile={tl} projection={projection} terrain={terrain} />)}
+    </>
+  );
+}
+
+function GeoTileMesh({ tile, projection, terrain }: { tile: GeoTile; projection: Projection; terrain: Terrain | null }) {
+  const SEG = 40;
+  const geometry = useMemo(() => {
+    const g = new THREE.PlaneGeometry(1, 1, SEG, SEG);
+    const pos = g.attributes.position as THREE.BufferAttribute;
+    const uv = g.attributes.uv as THREE.BufferAttribute;
+    const { z } = tile.range;
+    for (let i = 0; i < pos.count; i++) {
+      const u = uv.getX(i), v = uv.getY(i);
+      // The tile is linear in Web-Mercator space: interpolate there, then project
+      const lng = tileXToLng(tile.x + u, z);
+      const lat = tileYToLat(tile.y + (1 - v), z);
+      const { x, z: sz } = projection.toScene(lat, lng);
+      pos.setXYZ(i, x, terrain ? terrain.groundAt(x, sz) : GROUND_Y, sz);
+    }
+    pos.needsUpdate = true;
+    g.computeVertexNormals();
+    return g;
+  }, [tile, projection, terrain]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  return (
+    <mesh geometry={geometry} receiveShadow>
+      <meshStandardMaterial map={tile.texture} roughness={1} metalness={0} side={THREE.DoubleSide} color="#9aa5b5" />
+    </mesh>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Glow (bloom) — only bright, un-tone-mapped colours bloom
+// ─────────────────────────────────────────────────────────
+function BloomEffect() {
+  const { gl, scene, camera, size } = useThree();
+  const composer = useMemo(() => {
+    const c = new EffectComposer(gl);
+    c.addPass(new RenderPass(scene, camera));
+    c.addPass(new UnrealBloomPass(new THREE.Vector2(size.width, size.height), 0.7, 0.5, 0.9));
+    c.addPass(new OutputPass());
+    return c;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gl, scene, camera]);
+  useEffect(() => { composer.setSize(size.width, size.height); composer.setPixelRatio(gl.getPixelRatio()); }, [composer, size, gl]);
+  useEffect(() => () => composer.dispose(), [composer]);
+  useFrame(() => composer.render(), 1);   // priority > 0 → takes over rendering
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────
+// Pressure history (timeline)
+// ─────────────────────────────────────────────────────────
+interface PressureHistory {
+  from: number;
+  to: number;
+  byCode: Map<string, { t: number; pressure: number; flow: number | null; temp: number | null; status: string }[]>;
+}
+
+function usePressureHistory(pipelineId: string): PressureHistory | null {
+  const [history, setHistory] = useState<PressureHistory | null>(null);
+  useEffect(() => {
+    let alive = true;
+    // Last 24 h; if the line has been quiet, fall back to its latest 24 h of readings (up to 90 days back)
+    const get = (hours: number) => fetch(`/api/pipelines/${pipelineId}/readings?hours=${hours}`).then((r) => r.json());
+    get(24)
+      .then((j) => (j?.ok && j.data.series.some((x: { readings: unknown[] }) => x.readings.length) ? j : get(24 * 90)))
+      .then((j) => {
+        if (!alive || !j?.ok) return;
+        const byCode: PressureHistory["byCode"] = new Map();
+        let from = Infinity, to = -Infinity;
+        for (const s of j.data.series as { code: string; readings: { time: string; pressure: number; flowRate: number | null; temperature: number | null; status: string }[] }[]) {
+          const rows = s.readings.map((r) => ({ t: new Date(r.time).getTime(), pressure: r.pressure, flow: r.flowRate, temp: r.temperature, status: r.status }));
+          rows.forEach((r) => { from = Math.min(from, r.t); to = Math.max(to, r.t); });
+          if (rows.length) byCode.set(s.code, rows);
+        }
+        from = Math.max(from, to - 24 * 3600_000);   // show one day, ending at the latest reading
+        // A timeline needs at least two moments to scrub between
+        if (byCode.size && to - from > 60_000) setHistory({ from, to, byCode });
+      })
+      .catch(() => { /* no history → no timeline */ });
+    return () => { alive = false; };
+  }, [pipelineId]);
+  return history;
+}
+
+/** Sensor values as they were at time t (latest reading at or before t). */
+function pointsAt(points: PressurePoint[], h: PressureHistory, t: number): PressurePoint[] {
+  return points.map((p) => {
+    const rows = h.byCode.get(p.code);
+    if (!rows) return { ...p, currentPressure: null, currentFlow: null, currentTemp: null, status: "NORMAL" };
+    let row = null;
+    for (const r of rows) { if (r.t <= t) row = r; else break; }
+    if (!row) return { ...p, currentPressure: null, currentFlow: null, currentTemp: null, status: "NORMAL" };
+    return { ...p, currentPressure: row.pressure, currentFlow: row.flow, currentTemp: row.temp, status: row.status };
+  });
+}
+
+function TimelineBar({ history, timeAt, playing, onChange, onPlay, onLive }: {
+  history: PressureHistory; timeAt: number | null; playing: boolean;
+  onChange: (t: number) => void; onPlay: () => void; onLive: () => void;
+}) {
+  const { t } = useI18n();
+  const f = useFormat();
+  const value = timeAt ?? history.to;
+  return (
+    <Panel className="absolute bottom-16 start-1/2 z-20 flex w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 items-center gap-2 px-3 py-2 rtl:translate-x-1/2 sm:bottom-3">
+      <History className="h-4 w-4 shrink-0 text-[#5b8def]" />
+      <button type="button" onClick={onPlay} aria-label={playing ? t("assets.pipeline3d.timeline.pause") : t("assets.pipeline3d.timeline.play")}
+        className="rounded-md p-1 hover:bg-white/10">
+        {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+      </button>
+      <input
+        type="range"
+        min={history.from}
+        max={history.to}
+        step={(history.to - history.from) / 240}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={t("assets.pipeline3d.timeline.label")}
+        className="h-1 flex-1 cursor-pointer accent-[#5b8def]"
+        dir="ltr"
+      />
+      <span className="w-28 shrink-0 text-center font-mono text-[11px] text-[#8b97a8]">
+        {timeAt === null ? t("assets.pipeline3d.timeline.live") : f.dateTime(new Date(value))}
+      </span>
+      {timeAt !== null && (
+        <button type="button" onClick={onLive} className="shrink-0 rounded-md bg-[#5b8def]/20 px-2 py-0.5 text-[11px] text-[#5b8def] hover:bg-[#5b8def]/30">
+          {t("assets.pipeline3d.timeline.backToLive")}
+        </button>
+      )}
+    </Panel>
   );
 }
