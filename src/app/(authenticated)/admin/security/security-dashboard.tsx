@@ -49,6 +49,7 @@ interface VerifyReport {
   totalEntries: number;
   unhashedCount: number;
   brokenAt?: { id: string; reason: string; createdAt: string };
+  sealed?: { id: string; createdAt: string; sealedCount: number; knownBreak: { id: string; reason: string } | null };
 }
 
 export function SecurityDashboard() {
@@ -88,6 +89,25 @@ export function SecurityDashboard() {
       const r = await fetch("/api/security/audit-verify");
       const j = await r.json();
       if (j.ok) setVerifyResult(j.data);
+    } finally { setVerifying(false); }
+  }
+
+  async function sealChain() {
+    const reason = window.prompt(
+      "Re-anchor the audit chain.\nEverything so far is frozen under one signed checkpoint; the known break is recorded in it.\n\nReason:",
+      "Known break from the database migration",
+    );
+    if (!reason?.trim()) return;
+    setVerifying(true);
+    try {
+      const r = await fetch("/api/security/audit-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const j = await r.json();
+      if (j.ok) { setVerifyResult(j.data.report); load(); }
+      else window.alert(j.error?.message ?? "Could not seal the chain");
     } finally { setVerifying(false); }
   }
 
@@ -235,6 +255,12 @@ npm run dev`}</pre>
                 <CheckCircle2 className="h-4 w-4" />
                 Chain valid — {verifyResult.totalEntries} entries verified.
                 {verifyResult.unhashedCount > 0 && <span className="text-muted-foreground"> ({verifyResult.unhashedCount} legacy entries skipped)</span>}
+                {verifyResult.sealed && (
+                  <span className="text-muted-foreground">
+                    {" "}· sealed {new Date(verifyResult.sealed.createdAt).toLocaleString()} ({verifyResult.sealed.sealedCount} entries
+                    {verifyResult.sealed.knownBreak ? `, known break ${verifyResult.sealed.knownBreak.id}` : ""})
+                  </span>
+                )}
               </div>
             ) : (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -248,6 +274,11 @@ npm run dev`}</pre>
                     <div>Reason: {verifyResult.brokenAt.reason}</div>
                     <div>Time: {new Date(verifyResult.brokenAt.createdAt).toLocaleString()}</div>
                   </div>
+                )}
+                {verifyResult.brokenAt?.reason !== "seal-mismatch" && (
+                  <Button className="mt-3" variant="outline" size="sm" onClick={sealChain} disabled={verifying}>
+                    <Lock className="h-3.5 w-3.5" /> Re-anchor (seal) chain
+                  </Button>
                 )}
               </div>
             )}
