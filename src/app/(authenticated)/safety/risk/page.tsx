@@ -1,12 +1,25 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
-  ShieldAlert, Plus, X, Loader2, Brain, FlaskConical,
-  CheckCircle2, Clock, RefreshCw, ChevronDown, ChevronUp,
-  Link2, ExternalLink,
+  ShieldAlert, Plus, X, Loader2, Brain, CheckCircle2, Clock, RefreshCw,
+  ChevronDown, ChevronUp, Link2, ArrowRight, MapPin, User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFormat, useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/translate";
+import { TONE_EDGE, toneFor } from "@/lib/ui/tone";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -43,32 +56,18 @@ type Filter = "ALL" | "DRAFT" | "APPROVED" | "EXPIRED";
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-const RISK_STRIP: Record<string, string> = {
-  LOW:      "bg-green-500",
-  MEDIUM:   "bg-yellow-500",
-  HIGH:     "bg-orange-500",
-  CRITICAL: "bg-red-500",
-};
-const RISK_BADGE: Record<string, string> = {
-  LOW:      "border-green-500/40  bg-green-500/10  text-green-400",
-  MEDIUM:   "border-yellow-500/40 bg-yellow-500/10 text-yellow-400",
-  HIGH:     "border-orange-500/40 bg-orange-500/10 text-orange-400",
-  CRITICAL: "border-red-500/40    bg-red-500/10    text-red-400",
-};
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT:    "bg-muted/30         text-muted-foreground",
-  APPROVED: "bg-green-500/15     text-green-400",
-  EXPIRED:  "bg-orange-500/15    text-orange-400",
-};
 const TYPES = ["CHEMICAL", "PHYSICAL", "ELECTRICAL", "FIRE", "ERGONOMIC", "BIOLOGICAL", "PROCESS_SAFETY", "MECHANICAL", "ENVIRONMENTAL", "GENERAL"];
 const RISK_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
 const OPEN_PERMIT = ["DRAFT", "PENDING", "SUBMITTED", "IN_REVIEW", "APPROVED", "ACTIVE"];
+const FILTERS: Filter[] = ["ALL", "DRAFT", "APPROVED", "EXPIRED"];
 
 // ─────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────
 
 export default function RiskAssessmentPage() {
+  const { t } = useI18n();
+  const f = useFormat();
   const [items,      setItems]      = useState<RiskAssessment[]>([]);
   const [stats,      setStats]      = useState<Stats | null>(null);
   const [filter,     setFilter]     = useState<Filter>("ALL");
@@ -134,7 +133,7 @@ export default function RiskAssessmentPage() {
     });
     const j = await r.json();
     if (j.ok) { setFControls(j.data.controlsSuggested); setFAfter(j.data.riskAfter); setAiUsed(true); }
-    else setFormError(j.error?.message ?? "AI suggestion failed");
+    else setFormError(j.error?.message ?? t("safety.risk.form.aiFailed"));
     setAiLoading(false);
   }
 
@@ -155,7 +154,7 @@ export default function RiskAssessmentPage() {
     });
     const j = await r.json();
     if (j.ok) { setShowNew(false); resetForm(); await Promise.all([loadItems(), loadStats()]); }
-    else setFormError(j.error?.message ?? "Could not save the assessment");
+    else setFormError(j.error?.message ?? t("safety.risk.form.saveFailed"));
     setCreating(false);
   }
 
@@ -172,186 +171,152 @@ export default function RiskAssessmentPage() {
       body: JSON.stringify({ id, status }),
     });
     const j = await r.json().catch(() => null);
-    if (!j?.ok) window.alert(j?.error?.message ?? "Update failed");
+    if (!j?.ok) window.alert(j?.error?.message ?? t("safety.risk.card.updateFailed"));
     await Promise.all([loadItems(), loadStats()]);
   }
 
-
-
+  const typeLabel = (v: string) => t(`safety.risk.types.${v}` as MessageKey);
 
   return (
-    <div className="container mx-auto max-w-5xl px-6 py-6 space-y-5">
+    <div className="container mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            <ShieldAlert className="h-6 w-6 text-primary" /> {t("safety.risk.title")}
+          </span>
+        }
+        description={t("safety.risk.subtitle")}
+        actions={
+          <>
+            <Button variant="outline" size="icon" aria-label={t("safety.risk.refresh")} onClick={() => { loadItems(); loadStats(); }}>
+              <RefreshCw />
+            </Button>
+            <Button variant={showNew ? "outline" : "default"} onClick={() => setShowNew((v) => !v)}>
+              {showNew ? <><X /> {t("safety.risk.cancel")}</> : <><Plus /> {t("safety.risk.new")}</>}
+            </Button>
+          </>
+        }
+      />
 
-      {/* ── Header ───────────────────────────────────────── */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-display text-3xl tracking-tight flex items-center gap-2.5">
-            <ShieldAlert className="h-7 w-7 text-primary" /> Risk Assessment
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Hazard identification, risk scoring, AI-recommended controls, and PTW linking
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { loadItems(); loadStats(); }}
-            className="rounded-lg border border-border/40 p-2.5 text-muted-foreground hover:text-foreground">
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          <button onClick={() => setShowNew((v) => !v)}
-            className={cn(
-              "flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all",
-              showNew ? "bg-muted text-muted-foreground border border-border" : "bg-primary text-primary-foreground hover:bg-primary/90"
-            )}>
-            {showNew ? <><X className="h-4 w-4" /> Cancel</> : <><Plus className="h-4 w-4" /> New Assessment</>}
-          </button>
-        </div>
+      {/* ── KPI strip ────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Kpi label={t("safety.risk.kpi.total")}    value={stats?.total    ?? 0} />
+        <Kpi label={t("safety.risk.kpi.draft")}    value={stats?.draft    ?? 0} />
+        <Kpi label={t("safety.risk.kpi.approved")} value={stats?.approved ?? 0} tone="text-success" />
+        <Kpi label={t("safety.risk.kpi.expired")}  value={stats?.expired  ?? 0} tone="text-warning" />
+        <Kpi label={t("safety.risk.kpi.ai")}       value={stats?.withAI   ?? 0} tone="text-primary" />
       </div>
 
-      {/* ── KPI Strip ────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Kpi icon="📋" label="Total"       value={stats?.total    ?? 0} tone="neutral" />
-        <Kpi icon="✏️" label="Draft"       value={stats?.draft    ?? 0} tone="info"    />
-        <Kpi icon="✅" label="Approved"    value={stats?.approved ?? 0} tone="ok"      />
-        <Kpi icon="⏰" label="Expired"     value={stats?.expired  ?? 0} tone="warn"    />
-        <Kpi icon="🤖" label="AI Assisted" value={stats?.withAI   ?? 0} tone="ai"      />
-      </div>
-
-      {/* ══ NEW ASSESSMENT FORM ══════════════════════════ */}
+      {/* ══ New assessment form ══════════════════════════ */}
       {showNew && (
-        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-5 space-y-4">
-          <h2 className="font-semibold text-sm flex items-center gap-2">
-            <Plus className="h-4 w-4 text-primary" /> New Risk Assessment
-          </h2>
-          <form onSubmit={handleCreate} className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Title *</label>
-                <input value={fTitle} onChange={(e) => setFTitle(e.target.value)} required
-                  placeholder="e.g. H2S Exposure Risk — Well Intervention"
-                  className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Type *</label>
-                <select value={fType} onChange={(e) => setFType(e.target.value)}
-                  className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none">
-                  {TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Risk Before Controls *</label>
-                <select value={fBefore} onChange={(e) => setFBefore(e.target.value)}
-                  className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none">
-                  {RISK_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Hazard Description *</label>
-                  <button type="button" onClick={suggestControls} disabled={aiLoading || !fHazard}
-                    className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20 disabled:opacity-40">
-                    {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Brain className="h-3 w-3" />}
-                    {aiLoading ? "Analysing…" : "AI Suggest Controls"}
-                  </button>
+        <Card>
+          <CardContent className="space-y-4 p-5">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <Plus className="h-4 w-4 text-primary" /> {t("safety.risk.form.heading")}
+            </h2>
+            <form onSubmit={handleCreate} className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="ra-title">{t("safety.risk.form.title")}</Label>
+                  <Input id="ra-title" value={fTitle} onChange={(e) => setFTitle(e.target.value)} required minLength={3}
+                    placeholder={t("safety.risk.form.titlePh")} />
                 </div>
-                <textarea value={fHazard} onChange={(e) => setFHazard(e.target.value)} required rows={2}
-                  placeholder="Describe the hazard in detail…"
-                  className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none resize-none" />
+                <div className="space-y-1.5">
+                  <Label htmlFor="ra-type">{t("safety.risk.form.type")}</Label>
+                  <NativeSelect id="ra-type" value={fType} onChange={(e) => setFType(e.target.value)}>
+                    {TYPES.map((v) => <option key={v} value={v}>{typeLabel(v)}</option>)}
+                  </NativeSelect>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ra-before">{t("safety.risk.form.riskBefore")}</Label>
+                  <NativeSelect id="ra-before" value={fBefore} onChange={(e) => setFBefore(e.target.value)}>
+                    {RISK_LEVELS.map((l) => <option key={l} value={l}>{f.enum("severity", l)}</option>)}
+                  </NativeSelect>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="ra-hazard">{t("safety.risk.form.hazard")}</Label>
+                    <Button type="button" size="sm" variant="outline" onClick={suggestControls} disabled={aiLoading || fHazard.trim().length < 10}>
+                      {aiLoading ? <Loader2 className="animate-spin" /> : <Brain />}
+                      {aiLoading ? t("safety.risk.form.analysing") : t("safety.risk.form.suggest")}
+                    </Button>
+                  </div>
+                  <Textarea id="ra-hazard" value={fHazard} onChange={(e) => setFHazard(e.target.value)} required minLength={10} rows={3}
+                    placeholder={t("safety.risk.form.hazardPh")} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="ra-controls" className="flex flex-wrap items-center gap-2">
+                    {t("safety.risk.form.controls")}
+                    {aiUsed && fControls && <span className="text-xs font-normal text-primary">{t("safety.risk.form.aiFilled")}</span>}
+                  </Label>
+                  <Textarea id="ra-controls" value={fControls} onChange={(e) => setFControls(e.target.value)} rows={5}
+                    placeholder={t("safety.risk.form.controlsPh")} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ra-after">{t("safety.risk.form.riskAfter")}</Label>
+                  <NativeSelect id="ra-after" value={fAfter} onChange={(e) => setFAfter(e.target.value)}>
+                    {RISK_LEVELS.map((l) => <option key={l} value={l}>{f.enum("severity", l)}</option>)}
+                  </NativeSelect>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ra-site">{t("safety.risk.form.site")}</Label>
+                  <NativeSelect id="ra-site" value={fSite} onChange={(e) => setFSite(e.target.value)}>
+                    <option value="">{t("safety.risk.form.sitePh")}</option>
+                    {sites.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
+                  </NativeSelect>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="ra-permit" className="flex items-center gap-1.5">
+                    <Link2 className="h-3.5 w-3.5" /> {t("safety.risk.form.permit")}
+                    <span className="font-normal text-muted-foreground">— {t("safety.risk.form.optional")}</span>
+                  </Label>
+                  <NativeSelect id="ra-permit" value={fPermit} onChange={(e) => setFPermit(e.target.value)}>
+                    <option value="">{t("safety.risk.form.noPermit")}</option>
+                    {permits.map((p) => (
+                      <option key={p.id} value={p.id}>{p.permitNumber} — {p.title.slice(0, 50)}</option>
+                    ))}
+                  </NativeSelect>
+                  {permits.length === 0 && <p className="text-xs text-muted-foreground">{t("safety.risk.form.noOpenPermits")}</p>}
+                </div>
               </div>
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                  Controls Suggested
-                  {aiUsed && fControls && <span className="ml-2 text-primary">✓ AI filled</span>}
-                </label>
-                <textarea value={fControls} onChange={(e) => setFControls(e.target.value)} rows={3}
-                  placeholder="Describe the control measures…"
-                  className={cn(
-                    "w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none resize-none",
-                    fControls ? "border-primary/40 focus:border-primary" : "border-border/60 focus:border-primary"
-                  )} />
+              {formError && (
+                <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{formError}</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => { setShowNew(false); resetForm(); }}>
+                  {t("safety.risk.cancel")}
+                </Button>
+                <Button type="submit" disabled={creating}>
+                  {creating ? <Loader2 className="animate-spin" /> : <ShieldAlert />}
+                  {t("safety.risk.form.save")}
+                </Button>
               </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Risk After Controls</label>
-                <select value={fAfter} onChange={(e) => setFAfter(e.target.value)}
-                  className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none">
-                  {RISK_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Site</label>
-                <select value={fSite} onChange={(e) => setFSite(e.target.value)}
-                  className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none">
-                  <option value="">— Select site —</option>
-                  {sites.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
-                </select>
-              </div>
-              {/* ── Permit link ── */}
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
-                  <Link2 className="h-3 w-3" /> Link to Work Permit (PTW)
-                  <span className="text-muted-foreground/60 normal-case font-normal ml-1">— optional</span>
-                </label>
-                <select value={fPermit} onChange={(e) => setFPermit(e.target.value)}
-                  className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none">
-                  <option value="">— No permit linked —</option>
-                  {permits.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.permitNumber} — {p.title.slice(0, 50)}
-                    </option>
-                  ))}
-                </select>
-                {permits.length === 0 && (
-                  <p className="mt-1 text-[10px] text-muted-foreground">No open permits found.</p>
-                )}
-              </div>
-            </div>
-            {formError && (
-              <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{formError}</p>
-            )}
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => { setShowNew(false); resetForm(); }}
-                className="rounded-lg border border-border/50 px-4 py-2 text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-              <button type="submit" disabled={creating}
-                className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-                {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldAlert className="h-3.5 w-3.5" />}
-                Save Assessment
-              </button>
-            </div>
-          </form>
-        </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
-      {/* ── Filter Tabs ──────────────────────────────────── */}
-      <div className="flex flex-wrap gap-2">
-        {(["ALL", "DRAFT", "APPROVED", "EXPIRED"] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
+      {/* ── Filter ───────────────────────────────────────── */}
+      <div className="flex flex-wrap gap-2" role="tablist">
+        {FILTERS.map((v) => (
+          <button key={v} type="button" role="tab" aria-selected={filter === v} onClick={() => setFilter(v)}
             className={cn(
-              "rounded-full border px-4 py-1.5 text-xs font-medium transition-colors",
-              filter === f ? "border-primary bg-primary text-primary-foreground" : "border-border/50 text-muted-foreground hover:border-primary/50"
-            )}>{f}</button>
+              "rounded-full px-4 py-1.5 text-sm transition-colors",
+              filter === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
+            )}>
+            {t(`safety.risk.filter.${v}` as MessageKey)}
+          </button>
         ))}
-        <span className="ml-auto text-xs text-muted-foreground self-center">{items.length} record{items.length !== 1 ? "s" : ""}</span>
       </div>
 
-      {/* ══ LIST ════════════════════════════════════════════ */}
+      {/* ── List ─────────────────────────────────────────── */}
       {loading ? (
-        <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-        </div>
+        <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-28 w-full" />)}</div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/50 bg-muted/5 py-16 text-center space-y-3">
-          <div className="text-4xl">🛡️</div>
-          <div className="font-semibold">No risk assessments yet</div>
-          <div className="text-sm text-muted-foreground max-w-sm mx-auto">Create your first risk assessment.</div>
-          <div className="flex justify-center gap-2">
-            <button onClick={() => setShowNew(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-              <Plus className="h-4 w-4" /> New Assessment
-            </button>
-          </div>
-        </div>
+        <EmptyState icon={ShieldAlert} title={t("safety.risk.empty")} description={t("safety.risk.emptyHint")} />
       ) : (
         <div className="space-y-3">
-          {items.map((ra) => <RiskCard key={ra.id} ra={ra} onStatusChange={updateStatus} />)}
+          {items.map((ra) => <RiskCard key={ra.id} ra={ra} typeLabel={typeLabel} onStatusChange={updateStatus} />)}
         </div>
       )}
     </div>
@@ -359,17 +324,20 @@ export default function RiskAssessmentPage() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Risk Card
+// Risk card
 // ─────────────────────────────────────────────────────────────
 
 function RiskCard({
-  ra, onStatusChange,
+  ra, typeLabel, onStatusChange,
 }: {
   ra: RiskAssessment;
-  onStatusChange: (id: string, status: string) => void;
+  typeLabel: (v: string) => string;
+  onStatusChange: (id: string, status: string) => Promise<void>;
 }) {
+  const { t } = useI18n();
+  const f = useFormat();
   const [expanded, setExpanded] = useState(false);
-  const [updating,  setUpdating] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   async function changeStatus(status: string) {
     setUpdating(true);
@@ -377,108 +345,81 @@ function RiskCard({
     setUpdating(false);
   }
 
-  const riskReduced = ra.riskBefore !== ra.riskAfter;
+  const riskReduced = RISK_LEVELS.indexOf(ra.riskAfter) < RISK_LEVELS.indexOf(ra.riskBefore);
 
   return (
-    <div className="relative flex overflow-hidden rounded-xl border border-border/40 bg-background/60 backdrop-blur hover:border-border/70 transition-all">
-      {/* Risk-before color strip */}
-      <div className={cn("w-1 shrink-0 rounded-l-xl", RISK_STRIP[ra.riskBefore] ?? "bg-border")} />
-
-      <div className="flex-1 px-4 py-4 min-w-0 space-y-2.5">
+    <Card className={cn("border-s-4", TONE_EDGE[toneFor(ra.riskBefore)])}>
+      <CardContent className="space-y-2.5 p-4">
         {/* Top row */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded border border-border/40 bg-muted/20 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            {ra.type.replace("_", " ")}
-          </span>
-          <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", STATUS_BADGE[ra.status])}>
-            {ra.status}
-          </span>
+          <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{typeLabel(ra.type)}</span>
+          <StatusBadge value={ra.status} />
           {ra.aiSuggested && (
-            <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary flex items-center gap-1">
-              <Brain className="h-2.5 w-2.5" /> AI
+            <span className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+              <Brain className="h-3 w-3" /> {t("safety.risk.card.ai")}
             </span>
           )}
-          {/* Permit badge */}
           {ra.permit && (
-            <a href={`/operations/permits/${ra.permit.id}`}
-              className="rounded border border-primary/30 bg-primary/8 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/15 flex items-center gap-1 transition-colors">
-              <Link2 className="h-2.5 w-2.5" /> PTW {ra.permit.permitNumber}
-              <ExternalLink className="h-2 w-2 opacity-60" />
-            </a>
+            <Link href={`/operations/permits/${ra.permit.id}`}
+              className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary hover:bg-primary/15">
+              <Link2 className="h-3 w-3" /> {ra.permit.permitNumber}
+            </Link>
           )}
-          <span className="ml-auto text-[10px] text-muted-foreground">
-            {new Date(ra.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-          </span>
+          <span className="ms-auto text-xs text-muted-foreground">{f.date(ra.createdAt)}</span>
         </div>
 
-        {/* Title */}
-        <div className="font-semibold text-sm leading-snug">{ra.title}</div>
+        {/* Title + hazard */}
+        <div className="text-sm font-semibold leading-snug">{ra.title}</div>
+        <p className="line-clamp-2 text-sm text-muted-foreground">{ra.hazardDescription}</p>
 
-        {/* Hazard */}
-        <p className="text-xs text-muted-foreground line-clamp-2">{ra.hazardDescription}</p>
-
-        {/* Risk matrix */}
+        {/* Risk before → controls → after */}
         <div className="flex items-center gap-2">
-          <span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold", RISK_BADGE[ra.riskBefore])}>
-            {ra.riskBefore}
+          <StatusBadge value={ra.riskBefore} group="severity" />
+          <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground rtl:rotate-180" />
+          <span className="line-clamp-1 flex-1 text-xs text-muted-foreground">
+            {ra.controlsSuggested || t("safety.risk.card.noControls")}
           </span>
-          <span className="text-[10px] text-muted-foreground">→</span>
-          <span className="text-[10px] text-muted-foreground truncate flex-1 line-clamp-1">
-            {ra.controlsSuggested ? ra.controlsSuggested.slice(0, 60) + "…" : "No controls specified"}
-          </span>
-          <span className="text-[10px] text-muted-foreground">→</span>
-          <span className={cn("rounded border px-2 py-0.5 text-[10px] font-bold", RISK_BADGE[ra.riskAfter])}>
-            {ra.riskAfter}
-          </span>
-          {riskReduced && <span className="text-[10px] text-green-400">↓ Reduced</span>}
+          <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground rtl:rotate-180" />
+          <StatusBadge value={ra.riskAfter} group="severity" />
+          {riskReduced && <span className="text-xs text-success">{t("safety.risk.card.reduced")}</span>}
         </div>
 
-        {/* Expanded controls */}
+        {/* Expanded details */}
         {expanded && ra.controlsSuggested && (
-          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground whitespace-pre-wrap">
-            {ra.controlsSuggested}
-          </div>
+          <div className="whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 text-sm">{ra.controlsSuggested}</div>
         )}
         {expanded && ra.permit && (
-          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs space-y-1">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Linked Permit</div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-primary">{ra.permit.permitNumber}</span>
-              <span className="text-muted-foreground">—</span>
-              <span>{ra.permit.title}</span>
-              <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-medium ml-auto",
-                ra.permit.status === "ACTIVE" ? "bg-green-500/15 text-green-400" : "bg-muted/30 text-muted-foreground"
-              )}>{ra.permit.status}</span>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2.5 text-sm">
+            <span className="text-xs text-muted-foreground">{t("safety.risk.card.linkedPermit")}</span>
+            <span className="font-mono text-primary">{ra.permit.permitNumber}</span>
+            <span>{ra.permit.title}</span>
+            <StatusBadge value={ra.permit.status} className="ms-auto" />
           </div>
         )}
 
         {/* Meta + actions */}
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-          <span>📍 {ra.site.code} — {ra.site.name}</span>
-          <span>👤 {ra.conductedBy.name}</span>
-          <div className="ml-auto flex items-center gap-2">
-            <button onClick={() => setExpanded((v) => !v)}
-              className="flex items-center gap-1 rounded px-2 py-1 hover:bg-muted/30 text-muted-foreground">
-              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              {expanded ? "Less" : "Controls"}
-            </button>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {ra.site.code} — {ra.site.name}</span>
+          <span className="flex items-center gap-1"><User className="h-3.5 w-3.5" /> {ra.conductedBy.name}</span>
+          <div className="ms-auto flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setExpanded((v) => !v)}>
+              {expanded ? <ChevronUp /> : <ChevronDown />}
+              {expanded ? t("safety.risk.card.less") : t("safety.risk.card.showControls")}
+            </Button>
             {ra.status === "DRAFT" && (
-              <button onClick={() => changeStatus("APPROVED")} disabled={updating}
-                className="flex items-center gap-1 rounded-lg border border-green-500/40 bg-green-500/10 px-2 py-1 text-[10px] text-green-400 hover:bg-green-500/20 disabled:opacity-50">
-                {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Approve
-              </button>
+              <Button size="sm" variant="outline" onClick={() => changeStatus("APPROVED")} disabled={updating}>
+                {updating ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} {t("safety.risk.card.approve")}
+              </Button>
             )}
             {ra.status === "APPROVED" && (
-              <button onClick={() => changeStatus("EXPIRED")} disabled={updating}
-                className="flex items-center gap-1 rounded-lg border border-orange-500/30 bg-orange-500/8 px-2 py-1 text-[10px] text-orange-400 hover:bg-orange-500/15 disabled:opacity-50">
-                {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clock className="h-3 w-3" />} Expire
-              </button>
+              <Button size="sm" variant="outline" onClick={() => changeStatus("EXPIRED")} disabled={updating}>
+                {updating ? <Loader2 className="animate-spin" /> : <Clock />} {t("safety.risk.card.expire")}
+              </Button>
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -486,29 +427,13 @@ function RiskCard({
 // KPI
 // ─────────────────────────────────────────────────────────────
 
-type KpiTone = "neutral" | "info" | "ok" | "warn" | "ai";
-
-function Kpi({ icon, label, value, tone }: { icon: string; label: string; value: number; tone: KpiTone }) {
-  const cls: Record<KpiTone, string> = {
-    neutral: "border-border/40",
-    info:    value > 0 ? "border-primary/30  bg-primary/5"    : "border-border/40",
-    ok:      value > 0 ? "border-green-500/30 bg-green-500/5" : "border-border/40",
-    warn:    value > 0 ? "border-amber-500/40 bg-amber-500/5"  : "border-border/40",
-    ai:      value > 0 ? "border-primary/40  bg-primary/5"    : "border-border/40",
-  };
-  const txt: Record<KpiTone, string> = {
-    neutral: "text-foreground",
-    info:    value > 0 ? "text-primary"   : "text-muted-foreground",
-    ok:      value > 0 ? "text-green-400" : "text-muted-foreground",
-    warn:    value > 0 ? "text-amber-400" : "text-muted-foreground",
-    ai:      value > 0 ? "text-primary"   : "text-muted-foreground",
-  };
+function Kpi({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
-    <div className={cn("rounded-xl border p-4", cls[tone])}>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-        <span>{icon}</span> {label}
-      </div>
-      <div className={cn("mt-1.5 font-display text-2xl tabular-nums", txt[tone])}>{value}</div>
-    </div>
+    <Card>
+      <CardContent className="p-3">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className={cn("num mt-1 text-2xl font-semibold", tone)}>{value}</div>
+      </CardContent>
+    </Card>
   );
 }

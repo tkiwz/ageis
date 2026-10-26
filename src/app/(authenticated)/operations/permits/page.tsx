@@ -11,6 +11,7 @@ import {
   XCircle, AlertCircle, MapPin, User,
 } from "lucide-react";
 import { cn, timeAgo, riskColor } from "@/lib/utils";
+import { useFormat, useI18n } from "@/lib/i18n/client";
 
 interface Permit {
   id: string;
@@ -42,6 +43,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function PermitsPage() {
+  const { t } = useI18n();
+  const f = useFormat();
   const { data, loading } = useApi<PermitsResponse>("/api/permits?limit=50");
   const permits: Permit[] = Array.isArray(data) ? data : (data?.permits ?? []);
   const [search, setSearch] = useState("");
@@ -66,37 +69,35 @@ export default function PermitsPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-7xl px-6 py-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="container mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl tracking-tight">Permits to Work (PTW)</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage hot work, confined space, and height work permits
-          </p>
+          <h1 className="font-display text-3xl tracking-tight">{t("ops.permits.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("ops.permits.subtitle")}</p>
         </div>
         <Link href="/operations/permits/new">
           <Button>
-            <Plus className="mr-1.5 h-4 w-4" />
-            New Permit
+            <Plus className="h-4 w-4" />
+            {t("ops.permits.new")}
           </Button>
         </Link>
       </div>
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiBox icon={ClipboardCheck} label="Total"    value={stats.total} />
-        <KpiBox icon={Clock}          label="Pending"  value={stats.pending}  tone="warning" />
-        <KpiBox icon={CheckCircle2}   label="Active"   value={stats.active}   tone="success" />
-        <KpiBox icon={XCircle}        label="Rejected" value={stats.rejected} tone="critical" />
+        <KpiBox icon={ClipboardCheck} label={t("ops.permits.kpi.total")} value={stats.total} />
+        <KpiBox icon={Clock}          label={t("ops.permits.kpi.pending")} value={stats.pending}  tone="warning" />
+        <KpiBox icon={CheckCircle2}   label={t("ops.permits.kpi.active")} value={stats.active}   tone="success" />
+        <KpiBox icon={XCircle}        label={t("ops.permits.kpi.rejected")} value={stats.rejected} tone="critical" />
       </div>
 
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute start-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by number, title, type..."
+            placeholder={t("ops.permits.search")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="ps-9"
           />
         </div>
         <select
@@ -104,12 +105,10 @@ export default function PermitsPage() {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="rounded-md border border-input bg-background px-3 py-2 text-sm"
         >
-          <option value="ALL">All Status</option>
-          <option value="PENDING">Pending</option>
-          <option value="ACTIVE">Active</option>
-          <option value="REJECTED">Rejected</option>
-          <option value="EXPIRED">Expired</option>
-          <option value="COMPLETED">Completed</option>
+          <option value="ALL">{t("ops.permits.allStatuses")}</option>
+          {["PENDING", "ACTIVE", "REJECTED", "REVOKED", "EXPIRED", "COMPLETED"].map((s) => (
+            <option key={s} value={s}>{f.enum("status", s)}</option>
+          ))}
         </select>
       </div>
 
@@ -119,7 +118,7 @@ export default function PermitsPage() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
-          No permits match your filters.
+          {t("ops.permits.noMatch")}
         </div>
       ) : (
         <div className="space-y-2">
@@ -135,13 +134,13 @@ export default function PermitsPage() {
                           "rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase",
                           STATUS_COLORS[permit.status] ?? STATUS_COLORS.PENDING
                         )}>
-                          {permit.status}
+                          {f.enum("status", permit.status)}
                         </span>
                         <span className={cn(
                           "rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase",
                           riskColor(permit.riskLevel)
                         )}>
-                          {permit.riskLevel}
+                          {f.enum("severity", permit.riskLevel)}
                         </span>
                       </div>
                       <h3 className="mt-1.5 font-medium">{permit.title}</h3>
@@ -157,13 +156,13 @@ export default function PermitsPage() {
                         </span>
                         <span className="flex items-center gap-1">
                           <User className="h-3 w-3" />
-                          {permit.requestedBy?.name ?? "Unknown"}
+                          {permit.requestedBy?.name ?? t("ops.permits.unknown")}
                         </span>
                         <span className="flex items-center gap-1">
                           <AlertCircle className="h-3 w-3" />
-                          {permit.type.replace(/_/g, " ")}
+                          {f.enum("permitType", permit.type)}
                         </span>
-                        <span>{timeAgo(permit.createdAt)}</span>
+                        <span>{f.relative(permit.createdAt)}</span>
                       </div>
                     </div>
                   </div>

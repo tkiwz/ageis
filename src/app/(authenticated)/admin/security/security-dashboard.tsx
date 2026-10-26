@@ -9,6 +9,7 @@ import {
   CheckCircle2, XCircle, AlertTriangle, Clock, KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFormat, useI18n } from "@/lib/i18n/client";
 
 interface Attempt {
   id: string; email: string; ipAddress: string | null;
@@ -53,6 +54,8 @@ interface VerifyReport {
 }
 
 export function SecurityDashboard() {
+  const { t } = useI18n();
+  const f = useFormat();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -93,10 +96,7 @@ export function SecurityDashboard() {
   }
 
   async function sealChain() {
-    const reason = window.prompt(
-      "Re-anchor the audit chain.\nEverything so far is frozen under one signed checkpoint; the known break is recorded in it.\n\nReason:",
-      "Known break from the database migration",
-    );
+    const reason = window.prompt(t("admin.security.chain.sealPrompt"), t("admin.security.chain.sealDefault"));
     if (!reason?.trim()) return;
     setVerifying(true);
     try {
@@ -107,7 +107,7 @@ export function SecurityDashboard() {
       });
       const j = await r.json();
       if (j.ok) { setVerifyResult(j.data.report); load(); }
-      else window.alert(j.error?.message ?? "Could not seal the chain");
+      else window.alert(j.error?.message ?? t("admin.security.chain.sealFailed"));
     } finally { setVerifying(false); }
   }
 
@@ -134,42 +134,21 @@ export function SecurityDashboard() {
   }
 
   if (!data) {
-    // Detect the most common cause: Prisma client not regenerated for new tables.
-    const isPrismaTypeError = /\.loginAttempt|\.accountLockout|does not exist|Cannot read|undefined/i.test(loadError ?? "");
     return (
       <Card className="border-destructive/40 bg-destructive/5">
         <CardHeader>
           <CardTitle className="text-destructive flex items-center gap-2 text-base">
-            <AlertTriangle className="h-4 w-4" /> Security dashboard failed to load
+            <AlertTriangle className="h-4 w-4" /> {t("admin.security.loadFailed")}
           </CardTitle>
           {loadError && (
             <CardDescription className="font-mono text-xs">{loadError}</CardDescription>
           )}
         </CardHeader>
         <CardContent className="space-y-3">
-          {isPrismaTypeError ? (
-            <>
-              <div className="text-sm">
-                The new security tables (<code className="font-mono">LoginAttempt</code>, <code className="font-mono">AccountLockout</code>) exist in the database, but Prisma Client hasn&apos;t been regenerated yet.
-              </div>
-              <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-                <div className="mb-1 text-[10px] uppercase tracking-widest text-primary">Fix in your terminal</div>
-                <pre className="text-xs font-mono whitespace-pre-wrap">{`# Stop the dev server (Ctrl+C), then:
-npx prisma generate
-npm run dev`}</pre>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                After regeneration, refresh this page — the dashboard will load.
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-sm">Click retry — if it keeps failing, check the server console.</div>
-              <Button onClick={load} size="sm" variant="outline">
-                <RefreshCw className="h-3.5 w-3.5" /> Retry
-              </Button>
-            </>
-          )}
+          <div className="text-sm">{t("admin.security.retryHint")}</div>
+          <Button onClick={load} size="sm" variant="outline">
+            <RefreshCw className="h-3.5 w-3.5" /> {t("admin.security.retry")}
+          </Button>
         </CardContent>
       </Card>
     );
@@ -181,25 +160,25 @@ npm run dev`}</pre>
       <div className="grid gap-3 sm:grid-cols-4">
         <Kpi
           icon={CheckCircle2}
-          label="Successful logins (24h)"
+          label={t("admin.security.kpi.success")}
           value={data.stats.last24h.success}
           tone="success"
         />
         <Kpi
           icon={XCircle}
-          label="Failed logins (24h)"
+          label={t("admin.security.kpi.failed")}
           value={data.stats.last24h.failed}
           tone={data.stats.last24h.failed > 10 ? "warning" : "info"}
         />
         <Kpi
           icon={Lock}
-          label="Active lockouts"
+          label={t("admin.security.kpi.lockouts")}
           value={data.stats.activeLockouts}
           tone={data.stats.activeLockouts > 0 ? "critical" : "success"}
         />
         <Kpi
           icon={Shield}
-          label="Distinct IPs (24h)"
+          label={t("admin.security.kpi.ips")}
           value={data.stats.distinctIps24h}
           tone="info"
         />
@@ -210,25 +189,25 @@ npm run dev`}</pre>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
-              <KeyRound className="h-4 w-4" /> Environment posture
+              <KeyRound className="h-4 w-4" /> {t("admin.security.env.title")}
             </CardTitle>
-            <CardDescription>Critical secrets and production flags</CardDescription>
+            <CardDescription>{t("admin.security.env.desc")}</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={load}>
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            <RefreshCw className="h-3.5 w-3.5" /> {t("admin.security.refresh")}
           </Button>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <EnvCheck ok={data.env.nodeEnv === "production"} label={`NODE_ENV = ${data.env.nodeEnv}`} hint="should be 'production' in prod" />
-          <EnvCheck ok={data.env.hasEncryptionKey} label="ENCRYPTION_KEY set" hint="for AES-256-GCM field encryption" />
-          <EnvCheck ok={data.env.hasAuditChainSecret} label="AUDIT_CHAIN_SECRET set" hint="for HMAC audit chain" />
-          <EnvCheck ok={data.env.hasCronSecret} label="CRON_SECRET set" hint="for cron auth" />
-          <EnvCheck ok={data.env.hasMetricsToken} label="METRICS_TOKEN set" hint="for /api/metrics scrape" />
-          <EnvCheck ok={data.env.hasDeviceIngestSecret} label="DEVICE_INGEST_SECRET set" hint="for ESP32 ingest" />
-          <EnvCheck ok={data.env.demoSetupDisabled} label="DISABLE_DEMO_SETUP = 1" hint="must be on in production" critical={data.env.nodeEnv === "production"} />
-          <EnvCheck ok={data.env.nextauthHttpsConfigured} label="NEXTAUTH_URL is HTTPS" hint="prod requirement" />
-          <EnvCheck ok={data.env.dbIsPostgres} label="Database is PostgreSQL" hint="SQLite is dev-only" />
-          <EnvCheck ok={data.env.hasSentryDsn} label="Sentry DSN set" hint="optional but recommended" critical={false} />
+          <EnvCheck ok={data.env.nodeEnv === "production"} label={`NODE_ENV = ${data.env.nodeEnv}`} hint={t("admin.security.env.nodeEnv")} />
+          <EnvCheck ok={data.env.hasEncryptionKey} label="ENCRYPTION_KEY set" hint={t("admin.security.env.encryption")} />
+          <EnvCheck ok={data.env.hasAuditChainSecret} label="AUDIT_CHAIN_SECRET set" hint={t("admin.security.env.auditSecret")} />
+          <EnvCheck ok={data.env.hasCronSecret} label="CRON_SECRET set" hint={t("admin.security.env.cron")} />
+          <EnvCheck ok={data.env.hasMetricsToken} label="METRICS_TOKEN set" hint={t("admin.security.env.metrics")} />
+          <EnvCheck ok={data.env.hasDeviceIngestSecret} label="DEVICE_INGEST_SECRET set" hint={t("admin.security.env.device")} />
+          <EnvCheck ok={data.env.demoSetupDisabled} label="DISABLE_DEMO_SETUP = 1" hint={t("admin.security.env.demo")} critical={data.env.nodeEnv === "production"} />
+          <EnvCheck ok={data.env.nextauthHttpsConfigured} label="NEXTAUTH_URL is HTTPS" hint={t("admin.security.env.https")} />
+          <EnvCheck ok={data.env.dbIsPostgres} label="Database is PostgreSQL" hint={t("admin.security.env.db")} />
+          <EnvCheck ok={data.env.hasSentryDsn} label="Sentry DSN set" hint={t("admin.security.env.sentry")} critical={false} />
         </CardContent>
       </Card>
 
@@ -237,15 +216,15 @@ npm run dev`}</pre>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
-              <ShieldCheck className="h-4 w-4" /> Audit chain integrity
+              <ShieldCheck className="h-4 w-4" /> {t("admin.security.chain.title")}
             </CardTitle>
             <CardDescription>
-              {data.auditChain.totalEntries} total entries · {data.auditChain.hashedEntries} chained · {data.auditChain.unhashedLegacy} legacy (pre-chain)
+              {t("admin.security.chain.counts", { total: data.auditChain.totalEntries, hashed: data.auditChain.hashedEntries, legacy: data.auditChain.unhashedLegacy })}
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={verifyChain} disabled={verifying}>
             {verifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-            Verify chain
+            {t("admin.security.chain.verify")}
           </Button>
         </CardHeader>
         {verifyResult && (
@@ -253,12 +232,15 @@ npm run dev`}</pre>
             {verifyResult.valid ? (
               <div className="flex items-center gap-2 rounded-md border border-risk-low/40 bg-risk-low/5 px-3 py-2 text-sm text-risk-low">
                 <CheckCircle2 className="h-4 w-4" />
-                Chain valid — {verifyResult.totalEntries} entries verified.
-                {verifyResult.unhashedCount > 0 && <span className="text-muted-foreground"> ({verifyResult.unhashedCount} legacy entries skipped)</span>}
+                {t("admin.security.chain.valid", { n: verifyResult.totalEntries })}
+                {verifyResult.unhashedCount > 0 && <span className="text-muted-foreground"> {t("admin.security.chain.skipped", { n: verifyResult.unhashedCount })}</span>}
                 {verifyResult.sealed && (
                   <span className="text-muted-foreground">
-                    {" "}· sealed {new Date(verifyResult.sealed.createdAt).toLocaleString()} ({verifyResult.sealed.sealedCount} entries
-                    {verifyResult.sealed.knownBreak ? `, known break ${verifyResult.sealed.knownBreak.id}` : ""})
+                    {" "}{t("admin.security.chain.sealed", {
+                      date: f.dateTime(verifyResult.sealed.createdAt),
+                      n: verifyResult.sealed.sealedCount,
+                      brk: verifyResult.sealed.knownBreak ? t("admin.security.chain.knownBreak", { id: verifyResult.sealed.knownBreak.id }) : "",
+                    })}
                   </span>
                 )}
               </div>
@@ -266,18 +248,18 @@ npm run dev`}</pre>
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <div className="flex items-center gap-2 font-semibold">
                   <AlertTriangle className="h-4 w-4" />
-                  Chain INVALID — tampering detected
+                  {t("admin.security.chain.invalid")}
                 </div>
                 {verifyResult.brokenAt && (
                   <div className="mt-2 font-mono text-xs">
-                    <div>First broken entry: <span className="font-bold">{verifyResult.brokenAt.id}</span></div>
-                    <div>Reason: {verifyResult.brokenAt.reason}</div>
-                    <div>Time: {new Date(verifyResult.brokenAt.createdAt).toLocaleString()}</div>
+                    <div>{t("admin.security.chain.firstBroken")} <span className="font-bold">{verifyResult.brokenAt.id}</span></div>
+                    <div>{t("admin.security.chain.reason")} {verifyResult.brokenAt.reason}</div>
+                    <div>{t("admin.security.chain.time")} {f.dateTime(verifyResult.brokenAt.createdAt)}</div>
                   </div>
                 )}
                 {verifyResult.brokenAt?.reason !== "seal-mismatch" && (
                   <Button className="mt-3" variant="outline" size="sm" onClick={sealChain} disabled={verifying}>
-                    <Lock className="h-3.5 w-3.5" /> Re-anchor (seal) chain
+                    <Lock className="h-3.5 w-3.5" /> {t("admin.security.chain.seal")}
                   </Button>
                 )}
               </div>
@@ -290,13 +272,13 @@ npm run dev`}</pre>
       <Card className="glass">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Lock className="h-4 w-4" /> Account lockouts ({data.lockouts.length})
+            <Lock className="h-4 w-4" /> {t("admin.security.lockouts.title", { n: data.lockouts.length })}
           </CardTitle>
-          <CardDescription>Active = currently locked. Others have past failures but are not locked.</CardDescription>
+          <CardDescription>{t("admin.security.lockouts.desc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {data.lockouts.length === 0 ? (
-            <div className="text-center text-sm text-muted-foreground py-6">No lockouts on record.</div>
+            <div className="text-center text-sm text-muted-foreground py-6">{t("admin.security.lockouts.none")}</div>
           ) : (
             <div className="space-y-1">
               {data.lockouts.map((l) => (
@@ -308,18 +290,18 @@ npm run dev`}</pre>
                     {l.isActive ? <Lock className="h-3.5 w-3.5 text-destructive shrink-0" /> : <Unlock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                     <span className="font-mono text-xs truncate">{l.email}</span>
                     <Badge variant="outline" className="text-[10px]">
-                      {l.failCount} failures
+                      {t("admin.security.lockouts.failures", { n: l.failCount })}
                     </Badge>
                     {l.isActive && l.lockedUntil && (
                       <Badge variant="outline" className="text-[10px] border-destructive/40 text-destructive">
-                        until {new Date(l.lockedUntil).toLocaleTimeString()}
+                        {t("admin.security.lockouts.until", { time: f.time(l.lockedUntil) })}
                       </Badge>
                     )}
                   </div>
                   {l.isActive && (
                     <Button size="sm" variant="outline" onClick={() => unlock(l.email)} disabled={unlocking === l.email}>
                       {unlocking === l.email ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}
-                      Unlock
+                      {t("admin.security.lockouts.unlock")}
                     </Button>
                   )}
                 </div>
@@ -333,17 +315,17 @@ npm run dev`}</pre>
       <div className="grid gap-3 md:grid-cols-2">
         <Card className="glass">
           <CardHeader>
-            <CardTitle className="text-base">Top failing IPs (24h)</CardTitle>
+            <CardTitle className="text-base">{t("admin.security.ips.title")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.stats.topFailingIps.length === 0 ? (
-              <div className="text-center text-xs text-muted-foreground py-4">No failures in last 24h.</div>
+              <div className="text-center text-xs text-muted-foreground py-4">{t("admin.security.ips.none")}</div>
             ) : (
               <div className="space-y-1">
-                {data.stats.topFailingIps.map((t) => (
-                  <div key={t.ip ?? "x"} className="flex items-center justify-between text-sm">
-                    <span className="font-mono text-xs">{t.ip ?? "<unknown>"}</span>
-                    <Badge variant="outline" className="border-risk-medium/40 text-risk-medium">{t.count}</Badge>
+                {data.stats.topFailingIps.map((x) => (
+                  <div key={x.ip ?? "x"} className="flex items-center justify-between text-sm">
+                    <span className="font-mono text-xs">{x.ip ?? t("admin.security.ips.unknown")}</span>
+                    <Badge variant="outline" className="border-risk-medium/40 text-risk-medium">{x.count}</Badge>
                   </div>
                 ))}
               </div>
@@ -353,17 +335,17 @@ npm run dev`}</pre>
 
         <Card className="glass">
           <CardHeader>
-            <CardTitle className="text-base">Failure reasons (24h)</CardTitle>
+            <CardTitle className="text-base">{t("admin.security.reasons.title")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.stats.failByReason.length === 0 ? (
-              <div className="text-center text-xs text-muted-foreground py-4">Nothing to report.</div>
+              <div className="text-center text-xs text-muted-foreground py-4">{t("admin.security.reasons.none")}</div>
             ) : (
               <div className="space-y-1">
-                {data.stats.failByReason.map((f) => (
-                  <div key={f.reason} className="flex items-center justify-between text-sm">
-                    <span className="font-mono text-xs">{f.reason}</span>
-                    <Badge variant="outline">{f.count}</Badge>
+                {data.stats.failByReason.map((r) => (
+                  <div key={r.reason} className="flex items-center justify-between text-sm">
+                    <span className="font-mono text-xs">{r.reason}</span>
+                    <Badge variant="outline">{r.count}</Badge>
                   </div>
                 ))}
               </div>
@@ -376,42 +358,42 @@ npm run dev`}</pre>
       <Card className="glass">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Clock className="h-4 w-4" /> Recent login attempts ({data.recentAttempts.length})
+            <Clock className="h-4 w-4" /> {t("admin.security.attempts.title", { n: data.recentAttempts.length })}
           </CardTitle>
-          <CardDescription>Latest 50 attempts — success, failure, who, where.</CardDescription>
+          <CardDescription>{t("admin.security.attempts.desc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <th className="px-2 py-1 text-left">Time</th>
-                  <th className="px-2 py-1 text-left">Email</th>
-                  <th className="px-2 py-1 text-left">IP</th>
-                  <th className="px-2 py-1 text-left">Status</th>
-                  <th className="px-2 py-1 text-left">Reason</th>
+                  <th className="px-2 py-1 text-start">{t("admin.security.attempts.time")}</th>
+                  <th className="px-2 py-1 text-start">{t("admin.security.attempts.email")}</th>
+                  <th className="px-2 py-1 text-start">{t("admin.security.attempts.ip")}</th>
+                  <th className="px-2 py-1 text-start">{t("admin.security.attempts.status")}</th>
+                  <th className="px-2 py-1 text-start">{t("admin.security.attempts.reason")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30">
                 {data.recentAttempts.map((a) => (
                   <tr key={a.id} className="hover:bg-muted/20">
                     <td className="px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
-                      {new Date(a.createdAt).toLocaleString()}
+                      {f.dateTime(a.createdAt)}
                     </td>
                     <td className="px-2 py-1.5 font-mono">{a.email}</td>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground">{a.ipAddress ?? "—"}</td>
                     <td className="px-2 py-1.5">
                       {a.success ? (
-                        <span className="text-risk-low">✓ success</span>
+                        <span className="text-risk-low">✓ {t("admin.security.attempts.success")}</span>
                       ) : (
-                        <span className="text-destructive">✕ failed</span>
+                        <span className="text-destructive">✕ {t("admin.security.attempts.failed")}</span>
                       )}
                     </td>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground">{a.failReason ?? "—"}</td>
                   </tr>
                 ))}
                 {data.recentAttempts.length === 0 && (
-                  <tr><td colSpan={5} className="px-2 py-6 text-center text-muted-foreground">No login attempts yet.</td></tr>
+                  <tr><td colSpan={5} className="px-2 py-6 text-center text-muted-foreground">{t("admin.security.attempts.none")}</td></tr>
                 )}
               </tbody>
             </table>
@@ -419,27 +401,6 @@ npm run dev`}</pre>
         </CardContent>
       </Card>
 
-      {/* Quick test commands */}
-      <Card className="glass border-primary/30">
-        <CardHeader>
-          <CardTitle className="text-base">Test commands</CardTitle>
-          <CardDescription>Run these from your terminal to validate the security controls.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <TestCommand
-            label="Brute-force test (should lock after 5 fails)"
-            cmd={`for i in {1..7}; do curl -sX POST http://localhost:3000/api/auth/callback/credentials -d 'email=admin@aegis.local&password=wrong' > /dev/null; done`}
-          />
-          <TestCommand
-            label="CSRF block (should return 403)"
-            cmd={`curl -sX POST http://localhost:3000/api/permits -H 'Origin: https://evil.com' -H 'Content-Type: application/json' -d '{}'`}
-          />
-          <TestCommand
-            label="Audit chain verify"
-            cmd={`curl -s http://localhost:3000/api/security/audit-verify | jq`}
-          />
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -487,24 +448,6 @@ function EnvCheck({ ok, label, hint, critical = true }: {
       <div className="min-w-0 flex-1">
         <div className="text-xs font-medium">{label}</div>
         <div className="text-[10px] text-muted-foreground">{hint}</div>
-      </div>
-    </div>
-  );
-}
-
-function TestCommand({ label, cmd }: { label: string; cmd: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="rounded-md border border-border/40 bg-background/40 p-3">
-      <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="flex items-center justify-between gap-2">
-        <code className="flex-1 overflow-x-auto whitespace-nowrap text-[11px] font-mono">{cmd}</code>
-        <Button
-          size="sm" variant="outline"
-          onClick={() => { navigator.clipboard.writeText(cmd); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-        >
-          {copied ? "Copied" : "Copy"}
-        </Button>
       </div>
     </div>
   );

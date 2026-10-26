@@ -16,7 +16,7 @@ const TONES: Record<string, Tone> = {
   SCHEDULED: "info", REPORTED: "warning", INVESTIGATING: "info", PROCESSING: "info", THINKING: "info", RUNNING: "info",
   MAINTENANCE: "warning", INSPECTION: "info", SENT: "info", AI_PROCESSED: "info", OPEN: "warning",
   // bad
-  OVERDUE: "danger", ESCALATED: "danger", REJECTED: "danger", SUSPENDED: "danger", EXPIRED: "neutral", CANCELLED: "neutral",
+  OVERDUE: "danger", ESCALATED: "danger", REJECTED: "danger", REVOKED: "danger", SUSPENDED: "danger", EXPIRED: "neutral", CANCELLED: "neutral",
   OFFLINE: "neutral", ERROR: "danger", SHUTDOWN: "danger", FAILED: "danger", NON_COMPLIANT: "danger", FALSE_ALARM: "neutral",
   GAS_CRITICAL: "danger", FLAME: "danger", FIRE: "danger", LEAK: "danger", GAS_WARNING: "warning",
 };

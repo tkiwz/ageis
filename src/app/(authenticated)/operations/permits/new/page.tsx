@@ -12,6 +12,8 @@ import {
   Shield, HardHat, ListChecks, Sparkles,
 } from "lucide-react";
 import { cn, riskColor } from "@/lib/utils";
+import { useFormat, useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/translate";
 
 interface Site {
   id: string;
@@ -29,17 +31,19 @@ interface AIAnalysis {
 }
 
 const PERMIT_TYPES = [
-  { value: "HOT_WORK",        label: "Hot Work (welding, cutting, grinding)" },
-  { value: "COLD_WORK",       label: "Cold Work (general maintenance)" },
-  { value: "CONFINED_SPACE",  label: "Confined Space Entry" },
-  { value: "HEIGHT_WORK",     label: "Work at Heights (>1.8m)" },
-  { value: "EXCAVATION",      label: "Excavation / Trenching" },
-  { value: "ELECTRICAL",      label: "Electrical Work" },
-  { value: "RADIATION",       label: "Radiation / X-Ray" },
-  { value: "CHEMICAL",        label: "Chemical Handling" },
+  { value: "HOT_WORK" },
+  { value: "COLD_WORK" },
+  { value: "CONFINED_SPACE" },
+  { value: "HEIGHT_WORK" },
+  { value: "EXCAVATION" },
+  { value: "ELECTRICAL" },
+  { value: "RADIATION" },
+  { value: "CHEMICAL" },
 ];
 
 export default function NewPermitPage() {
+  const { t } = useI18n();
+  const f = useFormat();
   const router = useRouter();
   const [sites, setSites] = useState<Site[]>([]);
   const [saving, setSaving] = useState(false);
@@ -70,57 +74,25 @@ export default function NewPermitPage() {
 
   async function analyzeWithAI() {
     if (!form.title.trim() || !form.description.trim()) {
-      setError("Please fill in title and description first");
+      setError(t("ops.permits.ai.fillFirst"));
       return;
     }
 
     setAnalyzing(true);
     setError(null);
 
-    const prompt = `Analyze this Permit to Work request and respond ONLY with valid JSON.
-
-Type: ${form.type}
-Title: ${form.title}
-Description: ${form.description}
-Site: ${sites.find((s) => s.id === form.siteId)?.name ?? "Unknown"}
-Duration: ${form.startDate} to ${form.endDate}
-
-Respond ONLY with this JSON (no markdown, no backticks, no explanation):
-{
-  "hazards": ["hazard 1", "hazard 2", "hazard 3", "hazard 4"],
-  "requiredControls": ["control 1", "control 2", "control 3", "control 4"],
-  "requiredPPE": ["PPE 1", "PPE 2", "PPE 3"],
-  "preJobChecks": ["check 1", "check 2", "check 3"],
-  "riskLevel": "LOW or MEDIUM or HIGH or CRITICAL",
-  "summary": "1-2 sentence summary"
-}`;
-
     try {
-      const res = await fetch("/api/ai/chat", {
+      const res = await fetch("/api/permits/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          messages: [{ role: "user", content: prompt }],
-        }),
+        body: JSON.stringify({ type: form.type, title: form.title, description: form.description, siteId: form.siteId || undefined, startDate: form.startDate || undefined, endDate: form.endDate || undefined }),
       });
-
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error?.message ?? "AI failed");
-
-      const content = json.data?.message ?? json.data?.content ?? json.data?.reply ?? JSON.stringify(json.data ?? "");
-      console.log("[Permit AI] raw response:", content);
-      
-      // Extract JSON object from response (handles markdown, prose, etc.)
-      const jsonMatch = String(content).match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in AI response. Check console for details.");
-      }
-      
-      const parsed = JSON.parse(jsonMatch[0]);
-      setAnalysis(parsed);
+      if (!json.ok) throw new Error(json.error?.message ?? t("ops.permits.ai.failed"));
+      setAnalysis(json.data.analysis);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI analysis failed");
+      setError(err instanceof Error ? err.message : t("ops.permits.ai.failed"));
     } finally {
       setAnalyzing(false);
     }
@@ -162,35 +134,35 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
   return (
     <div className="container mx-auto max-w-3xl px-6 py-6">
       <Link href="/operations/permits" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4">
-        <ChevronLeft className="h-3 w-3" /> Back to Permits
+        <ChevronLeft className="h-3 w-3 rtl:rotate-180" /> {t("ops.permits.back")}
       </Link>
 
       <Card className="glass">
         <CardHeader>
-          <CardTitle>New Permit to Work</CardTitle>
+          <CardTitle>{t("ops.permits.form.heading")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
 
             <div className="space-y-1.5">
-              <Label htmlFor="type">Permit Type *</Label>
+              <Label htmlFor="type">{t("ops.permits.form.type")} *</Label>
               <select
                 id="type"
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
-                {PERMIT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                {PERMIT_TYPES.map((p) => (
+                  <option key={p.value} value={p.value}>{t(`ops.permits.form.types.${p.value}` as MessageKey)}</option>
                 ))}
               </select>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="title">Title *</Label>
+              <Label htmlFor="title">{t("ops.permits.form.title")} *</Label>
               <Input
                 id="title"
-                placeholder="e.g., Welding repair on Tank A-205"
+                placeholder={t("ops.permits.form.titlePh")}
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 required
@@ -198,10 +170,10 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="description">Description *</Label>
+              <Label htmlFor="description">{t("ops.permits.form.description")} *</Label>
               <textarea
                 id="description"
-                placeholder="Describe the work in detail: location, scope, equipment, materials..."
+                placeholder={t("ops.permits.form.descriptionPh")}
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={4}
@@ -211,7 +183,7 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="site">Site *</Label>
+              <Label htmlFor="site">{t("ops.permits.form.site")} *</Label>
               <select
                 id="site"
                 value={form.siteId}
@@ -227,7 +199,7 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="start">Start Date</Label>
+                <Label htmlFor="start">{t("ops.permits.form.start")}</Label>
                 <Input
                   id="start"
                   type="datetime-local"
@@ -236,7 +208,7 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="end">End Date</Label>
+                <Label htmlFor="end">{t("ops.permits.form.end")}</Label>
                 <Input
                   id="end"
                   type="datetime-local"
@@ -250,8 +222,7 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">AI Risk Analysis</span>
-                  <span className="text-[10px] text-muted-foreground">Powered by AEGIS</span>
+                  <span className="text-sm font-medium">{t("ops.permits.ai.title")}</span>
                 </div>
                 <Button
                   type="button"
@@ -261,16 +232,16 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
                   disabled={analyzing || !form.title || !form.description}
                 >
                   {analyzing ? (
-                    <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Analyzing...</>
+                    <><Loader2 className="h-3 w-3 animate-spin" /> {t("ops.permits.ai.analysing")}</>
                   ) : (
-                    <><Brain className="mr-1.5 h-3 w-3" /> {analysis ? "Re-analyze" : "Analyze with AI"}</>
+                    <><Brain className="h-3 w-3" /> {analysis ? t("ops.permits.ai.reanalyse") : t("ops.permits.ai.analyse")}</>
                   )}
                 </Button>
               </div>
 
               {!analysis && !analyzing && (
                 <p className="text-xs text-muted-foreground">
-                  Fill in title and description, then click &quot;Analyze with AI&quot; to get hazards, controls, and risk level.
+                  {t("ops.permits.ai.noneDraft")}
                 </p>
               )}
 
@@ -284,19 +255,19 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
 
                   {analysis.riskLevel && (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">AI Risk:</span>
+                      <span className="text-xs text-muted-foreground">{t("ops.permits.ai.risk")}</span>
                       <span className={cn(
                         "rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase",
                         riskColor(analysis.riskLevel)
-                      )}>{analysis.riskLevel}</span>
+                      )}>{f.enum("severity", analysis.riskLevel)}</span>
                     </div>
                   )}
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <AIList icon={AlertTriangle} label="Hazards" items={analysis.hazards} tone="critical" />
-                    <AIList icon={Shield}        label="Controls" items={analysis.requiredControls} tone="info" />
-                    <AIList icon={HardHat}       label="Required PPE" items={analysis.requiredPPE} tone="info" />
-                    <AIList icon={ListChecks}    label="Pre-job Checks" items={analysis.preJobChecks} tone="info" />
+                    <AIList icon={AlertTriangle} label={t("ops.permits.ai.hazards")} items={analysis.hazards} tone="critical" />
+                    <AIList icon={Shield}        label={t("ops.permits.ai.controls")} items={analysis.requiredControls} tone="info" />
+                    <AIList icon={HardHat}       label={t("ops.permits.ai.ppe")} items={analysis.requiredPPE} tone="info" />
+                    <AIList icon={ListChecks}    label={t("ops.permits.ai.checks")} items={analysis.preJobChecks} tone="info" />
                   </div>
                 </div>
               )}
@@ -310,13 +281,13 @@ Respond ONLY with this JSON (no markdown, no backticks, no explanation):
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <Link href="/operations/permits">
-                <Button type="button" variant="ghost">Cancel</Button>
+                <Button type="button" variant="ghost">{t("ops.permits.form.cancel")}</Button>
               </Link>
               <Button type="submit" disabled={saving}>
                 {saving ? (
-                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Saving...</>
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("ops.permits.form.saving")}</>
                 ) : (
-                  <><Save className="mr-1.5 h-3.5 w-3.5" /> Submit Permit</>
+                  <><Save className="h-3.5 w-3.5" /> {t("ops.permits.form.submit")}</>
                 )}
               </Button>
             </div>

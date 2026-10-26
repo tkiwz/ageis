@@ -1,6 +1,81 @@
 import type { DeepString } from "../types";
 
 /** "admin" namespace, owned by WP5. Keys: admin.<page>.<section>.<item> */
-export const admin = {};
+export const admin = {
+  security: {
+    title: "Security",
+    subtitle: "Sign-in attempts, account lockouts, audit chain integrity and environment checks",
+    loadFailed: "The security dashboard could not load",
+    retryHint: "Try again — if it keeps failing, check the server logs.",
+    retry: "Retry",
+    refresh: "Refresh",
+    kpi: {
+      success: "Successful sign-ins (24h)",
+      failed: "Failed sign-ins (24h)",
+      lockouts: "Active lockouts",
+      ips: "Distinct IPs (24h)",
+    },
+    env: {
+      title: "Environment checks",
+      desc: "Required secrets and production settings",
+      nodeEnv: "should be “production” on the live site",
+      encryption: "field encryption (AES-256-GCM)",
+      auditSecret: "audit chain signing",
+      cron: "scheduled jobs",
+      metrics: "metrics endpoint",
+      device: "device data (ESP32)",
+      demo: "must be on in production",
+      https: "required in production",
+      db: "SQLite is for development only",
+      sentry: "optional, recommended",
+    },
+    chain: {
+      title: "Audit chain integrity",
+      counts: "{total} entries · {hashed} signed · {legacy} older (before signing)",
+      verify: "Verify chain",
+      valid: "Chain valid — {n} entries verified.",
+      skipped: "({n} older entries skipped)",
+      sealed: "· sealed {date} ({n} entries{brk})",
+      knownBreak: ", known break {id}",
+      invalid: "Chain broken — possible tampering",
+      firstBroken: "First broken entry:",
+      reason: "Reason:",
+      time: "Time:",
+      seal: "Re-anchor (seal) chain",
+      sealPrompt: "Re-anchor the audit chain.\nEverything so far is frozen under one signed checkpoint; the known break is recorded in it.\n\nReason:",
+      sealDefault: "Known break from the database migration",
+      sealFailed: "Could not seal the chain",
+    },
+    lockouts: {
+      title: "Account lockouts ({n})",
+      desc: "Active = locked now. Others had failures but are not locked.",
+      none: "No lockouts on record.",
+      failures: "{n} failures",
+      until: "until {time}",
+      unlock: "Unlock",
+    },
+    ips: {
+      title: "Top failing IPs (24h)",
+      none: "No failures in the last 24h.",
+      unknown: "unknown",
+    },
+    reasons: {
+      title: "Failure reasons (24h)",
+      none: "Nothing to report.",
+    },
+    attempts: {
+      title: "Recent sign-in attempts ({n})",
+      desc: "Latest 50 attempts — result, who and from where.",
+      time: "Time",
+      email: "Email",
+      ip: "IP",
+      status: "Result",
+      reason: "Reason",
+      success: "Success",
+      failed: "Failed",
+      none: "No sign-in attempts yet.",
+    },
+  },
+};
 
 export type AdminMessages = DeepString<typeof admin>;

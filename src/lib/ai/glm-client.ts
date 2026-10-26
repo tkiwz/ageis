@@ -51,7 +51,8 @@ export async function glmChat(opts: GlmChatOptions) {
   };
 
   return {
-    content: data.choices?.[0]?.message?.content ?? "",
+    // GLM sometimes slips Chinese words into Arabic/English answers; the app never wants CJK text
+    content: (data.choices?.[0]?.message?.content ?? "").replace(/[⺀-鿿豈-﫿＀-｠]+/g, "").replace(/ {2,}/g, " "),
     model: opts.model ?? GLM_MODEL,
     usage: { inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0 },
     durationMs: Date.now() - started,

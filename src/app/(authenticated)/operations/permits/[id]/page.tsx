@@ -14,6 +14,8 @@ import { useApi } from "@/hooks/use-api";
 import { cn, riskColor, formatDateTime } from "@/lib/utils";
 import { ShareInsightButton } from "@/components/knowledge/share-insight-button";
 import { useI18n } from "@/lib/i18n/client";
+import { useFormat } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/translate";
 
 interface Permit {
   id: string;
@@ -57,24 +59,25 @@ function parseAI(raw: string | null): AIAnalysis | null {
 }
 
 export default function PermitDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { isAr } = useI18n();
+  const { t } = useI18n();
+  const f = useFormat();
   const { id } = use(params);
   const router = useRouter();
   const { data: permit, loading, refresh } = useApi<Permit>(`/api/permits/${id}`);
 
-  const [acting, setActing] = useState<"approve" | "reject" | "delete" | "analyze" | null>(null);
+  const [acting, setActing] = useState<"approve" | "reject" | "revoke" | "delete" | "analyze" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [freshAI, setFreshAI] = useState<AIAnalysis | null>(null);
 
   const ai = useMemo(() => freshAI ?? parseAI(permit?.aiAnalysis ?? null), [freshAI, permit?.aiAnalysis]);
 
-  async function handleAction(action: "APPROVE" | "REJECT") {
+  async function handleAction(action: "APPROVE" | "REJECT" | "REVOKE") {
     let reason: string | undefined;
-    if (action === "REJECT") {
-      reason = window.prompt(isAr ? "سبب الرفض؟" : "Reason for rejecting?")?.trim();
+    if (action !== "APPROVE") {
+      reason = window.prompt(t(action === "REJECT" ? "ops.permits.actions.rejectReason" : "ops.permits.actions.revokeReason"))?.trim();
       if (!reason) return;
     }
-    setActing(action.toLowerCase() as "approve" | "reject");
+    setActing(action.toLowerCase() as "approve" | "reject" | "revoke");
     setError(null);
     try {
       const res = await fetch(`/api/permits/${id}`, {
@@ -84,17 +87,17 @@ export default function PermitDetailPage({ params }: { params: Promise<{ id: str
         body: JSON.stringify({ action, reason }),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error?.message ?? "Failed");
+      if (!json.ok) throw new Error(json.error?.message ?? t("ops.permits.actions.failed"));
       refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("ops.permits.actions.failed"));
     } finally {
       setActing(null);
     }
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete permit ${permit?.permitNumber}? This cannot be undone.`)) return;
+    if (!confirm(t("ops.permits.actions.confirmDelete", { n: permit?.permitNumber ?? "" }))) return;
     setActing("delete");
     setError(null);
     try {
@@ -102,11 +105,11 @@ export default function PermitDetailPage({ params }: { params: Promise<{ id: str
         method: "DELETE", credentials: "include",
       });
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error?.message ?? "Failed");
+      if (!json.ok) throw new Error(json.error?.message ?? t("ops.permits.actions.failed"));
       router.push("/operations/permits");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Cannot delete");
+      setError(err instanceof Error ? err.message : t("ops.permits.actions.failed"));
       setActing(null);
     }
   }
@@ -116,42 +119,18 @@ export default function PermitDetailPage({ params }: { params: Promise<{ id: str
     setActing("analyze");
     setError(null);
 
-    const prompt = `Analyze this Permit to Work request and respond ONLY with valid JSON.
-
-Type: ${permit.type}
-Title: ${permit.title}
-Description: ${permit.description}
-Site: ${permit.site?.name ?? "Unknown"}
-Duration: ${permit.validFrom} to ${permit.validUntil}
-
-Respond ONLY with this JSON (no markdown, no backticks):
-{
-  "hazards": ["hazard 1", "hazard 2", "hazard 3", "hazard 4"],
-  "requiredControls": ["control 1", "control 2", "control 3", "control 4"],
-  "requiredPPE": ["PPE 1", "PPE 2", "PPE 3"],
-  "preJobChecks": ["check 1", "check 2", "check 3"],
-  "riskLevel": "LOW or MEDIUM or HIGH or CRITICAL",
-  "summary": "1-2 sentence summary"
-}`;
-
     try {
-      const res = await fetch("/api/ai/chat", {
+      const res = await fetch("/api/permits/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ permitId: id }),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error?.message ?? "AI failed");
-
-      const content = json.data?.message ?? json.data?.content ?? json.data?.reply ?? JSON.stringify(json.data);
-      const jsonMatch = String(content).match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON in response");
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      setFreshAI(parsed);
+      if (!json.ok) throw new Error(json.error?.message ?? t("ops.permits.ai.failed"));
+      setFreshAI(json.data.analysis);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI analysis failed");
+      setError(err instanceof Error ? err.message : t("ops.permits.ai.failed"));
     } finally {
       setActing(null);
     }
@@ -165,16 +144,17 @@ Respond ONLY with this JSON (no markdown, no backticks):
 
   if (!permit) return (
     <div className="container mx-auto px-6 py-12 text-center text-sm text-muted-foreground">
-      Permit not found.
+      {t("ops.permits.notFound")}
     </div>
   );
 
-  const canApprove = permit.status === "PENDING";
+  const canApprove = ["PENDING", "DRAFT", "SUBMITTED", "IN_REVIEW"].includes(permit.status);
+  const canRevoke  = permit.status === "ACTIVE";
 
   return (
-    <div className="container mx-auto max-w-4xl px-6 py-6">
+    <div className="container mx-auto max-w-4xl px-4 py-6 sm:px-6">
       <Link href="/operations/permits" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4">
-        <ChevronLeft className="h-3 w-3" /> Back to Permits
+        <ChevronLeft className="h-3 w-3 rtl:rotate-180" /> {t("ops.permits.back")}
       </Link>
 
       <div className="mb-6">
@@ -182,30 +162,30 @@ Respond ONLY with this JSON (no markdown, no backticks):
           <span className="num text-xs text-muted-foreground">{permit.permitNumber}</span>
           <span className={cn("rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase",
             STATUS_COLORS[permit.status] ?? STATUS_COLORS.PENDING)}>
-            {permit.status}
+            {f.enum("status", permit.status)}
           </span>
           <span className={cn("rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase", riskColor(permit.riskLevel))}>
-            {permit.riskLevel}
+            {f.enum("severity", permit.riskLevel)}
           </span>
         </div>
         <div className="mt-2 flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h1 className="font-display text-3xl tracking-tight">{permit.title}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{permit.type.replace(/_/g, " ")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{f.enum("permitType", permit.type)}</p>
           </div>
           <ShareInsightButton contextType="permit" contextId={permit.id} />
         </div>
       </div>
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Info icon={MapPin}  label="Site"      value={permit.site?.name ?? "-"} sub={permit.location ?? ""} />
-        <Info icon={User}    label="Requested" value={permit.requester?.name ?? "-"} sub={permit.requester?.role ?? ""} />
-        <Info icon={Calendar} label="Valid From" value={formatDateTime(permit.validFrom)} />
-        <Info icon={Calendar} label="Valid Until" value={formatDateTime(permit.validUntil)} />
+        <Info icon={MapPin}  label={t("ops.permits.site")}       value={permit.site?.name ?? "-"} sub={permit.location ?? ""} />
+        <Info icon={User}    label={t("ops.permits.requested")}  value={permit.requester?.name ?? "-"} sub={permit.requester?.role ? t(`roles.${permit.requester.role}` as MessageKey) : ""} />
+        <Info icon={Calendar} label={t("ops.permits.validFrom")}  value={f.dateTime(permit.validFrom)} />
+        <Info icon={Calendar} label={t("ops.permits.validUntil")} value={f.dateTime(permit.validUntil)} />
       </div>
 
       <Card className="glass mb-6">
-        <CardHeader className="pb-3"><CardTitle className="text-sm">Description</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-sm">{t("ops.permits.description")}</CardTitle></CardHeader>
         <CardContent>
           <p className="text-sm leading-relaxed whitespace-pre-line">{permit.description}</p>
         </CardContent>
@@ -217,14 +197,13 @@ Respond ONLY with this JSON (no markdown, no backticks):
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Sparkles className="h-4 w-4 text-primary" />
-              AI Risk Analysis
-              <span className="text-[10px] font-normal text-muted-foreground">Powered by AEGIS</span>
+              {t("ops.permits.ai.title")}
             </CardTitle>
             <Button size="sm" variant="outline" onClick={handleAnalyze} disabled={acting === "analyze"}>
               {acting === "analyze" ? (
-                <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Analyzing...</>
+                <><Loader2 className="h-3 w-3 animate-spin" /> {t("ops.permits.ai.analysing")}</>
               ) : (
-                <><Brain className="mr-1.5 h-3 w-3" /> {ai ? "Re-analyze" : "Analyze with AI"}</>
+                <><Brain className="h-3 w-3" /> {ai ? t("ops.permits.ai.reanalyse") : t("ops.permits.ai.analyse")}</>
               )}
             </Button>
           </div>
@@ -232,30 +211,30 @@ Respond ONLY with this JSON (no markdown, no backticks):
         <CardContent>
           {!ai && acting !== "analyze" && (
             <div className="py-6 text-center text-sm text-muted-foreground">
-              No analysis yet. Click "Analyze with AI" to get hazards, controls, and risk assessment.
+              {t("ops.permits.ai.none")}
             </div>
           )}
           {ai && (
             <div className="space-y-4">
               {ai.summary && (
                 <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-primary">Executive Summary</div>
+                  <div className="text-[10px] uppercase tracking-wider text-primary">{t("ops.permits.ai.summary")}</div>
                   <p className="mt-1 text-sm leading-relaxed">{ai.summary}</p>
                 </div>
               )}
               {ai.riskLevel && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">AI Risk Assessment:</span>
+                  <span className="text-xs text-muted-foreground">{t("ops.permits.ai.risk")}</span>
                   <span className={cn("rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase", riskColor(ai.riskLevel))}>
-                    {ai.riskLevel}
+                    {f.enum("severity", ai.riskLevel)}
                   </span>
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <AIList icon={AlertTriangle} label="Hazards"        items={ai.hazards}          tone="critical" />
-                <AIList icon={Shield}        label="Controls"       items={ai.requiredControls} tone="info" />
-                <AIList icon={HardHat}       label="Required PPE"   items={ai.requiredPPE}      tone="info" />
-                <AIList icon={ListChecks}    label="Pre-job Checks" items={ai.preJobChecks}     tone="info" />
+                <AIList icon={AlertTriangle} label={t("ops.permits.ai.hazards")} items={ai.hazards}          tone="critical" />
+                <AIList icon={Shield}        label={t("ops.permits.ai.controls")} items={ai.requiredControls} tone="info" />
+                <AIList icon={HardHat}       label={t("ops.permits.ai.ppe")} items={ai.requiredPPE}      tone="info" />
+                <AIList icon={ListChecks}    label={t("ops.permits.ai.checks")} items={ai.preJobChecks}     tone="info" />
               </div>
             </div>
           )}
@@ -271,13 +250,13 @@ Respond ONLY with this JSON (no markdown, no backticks):
       {/* Actions */}
       <Card className="glass">
         <CardContent className="p-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Button variant="outline" onClick={handleDelete} disabled={acting !== null}
               className="text-risk-critical hover:bg-risk-critical/10">
               {acting === "delete" ? (
-                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Deleting...</>
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("ops.permits.actions.deleting")}</>
               ) : (
-                <><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete Permit</>
+                <><Trash2 className="h-3.5 w-3.5" /> {t("ops.permits.actions.delete")}</>
               )}
             </Button>
 
@@ -286,25 +265,39 @@ Respond ONLY with this JSON (no markdown, no backticks):
                 <Button variant="outline" onClick={() => handleAction("REJECT")} disabled={acting !== null}
                   className="text-risk-critical hover:bg-risk-critical/10">
                   {acting === "reject" ? (
-                    <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Rejecting...</>
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("ops.permits.actions.rejecting")}</>
                   ) : (
-                    <><XCircle className="mr-1.5 h-3.5 w-3.5" /> Reject</>
+                    <><XCircle className="h-3.5 w-3.5" /> {t("ops.permits.actions.reject")}</>
                   )}
                 </Button>
                 <Button onClick={() => handleAction("APPROVE")} disabled={acting !== null}>
                   {acting === "approve" ? (
-                    <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Approving...</>
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("ops.permits.actions.approving")}</>
                   ) : (
-                    <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Approve</>
+                    <><CheckCircle2 className="h-3.5 w-3.5" /> {t("ops.permits.actions.approve")}</>
                   )}
                 </Button>
               </div>
+            )}
+            {canRevoke && (
+              <Button variant="outline" onClick={() => handleAction("REVOKE")} disabled={acting !== null}
+                className="text-risk-critical hover:bg-risk-critical/10">
+                {acting === "revoke" ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("ops.permits.actions.revoking")}</>
+                ) : (
+                  <><XCircle className="h-3.5 w-3.5" /> {t("ops.permits.actions.revoke")}</>
+                )}
+              </Button>
             )}
           </div>
 
           {permit.approvedAt && permit.approver && (
             <div className="mt-3 pt-3 border-t border-border/40 text-xs text-muted-foreground">
-              {permit.status === "ACTIVE" ? "Approved" : "Rejected"} by <strong>{permit.approver.name}</strong> ({permit.approver.role}) at {formatDateTime(permit.approvedAt)}
+              {t(permit.status === "REJECTED" ? "ops.permits.actions.rejectedBy" : "ops.permits.actions.approvedBy", {
+                name: permit.approver.name,
+                role: t(`roles.${permit.approver.role}` as MessageKey),
+                date: f.dateTime(permit.approvedAt),
+              })}
             </div>
           )}
         </CardContent>

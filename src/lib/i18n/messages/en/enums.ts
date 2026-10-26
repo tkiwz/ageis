@@ -11,6 +11,7 @@ export const enums = {
     IN_REVIEW: "In review",
     APPROVED: "Approved",
     REJECTED: "Rejected",
+    REVOKED: "Revoked",
     SUSPENDED: "Suspended",
     EXPIRED: "Expired",
     CANCELLED: "Cancelled",

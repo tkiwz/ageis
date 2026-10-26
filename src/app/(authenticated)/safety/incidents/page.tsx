@@ -6,6 +6,7 @@ import { useApi } from "@/hooks/use-api";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertTriangle, ArrowRight, Brain } from "lucide-react";
 import { cn, timeAgo, riskColor } from "@/lib/utils";
+import { useFormat, useI18n } from "@/lib/i18n/client";
 
 interface Incident {
   id: string;
@@ -29,6 +30,8 @@ interface IncidentsResponse {
 const STATUS_FILTER = ["ALL", "OPEN", "INVESTIGATING", "RESOLVED", "CLOSED"] as const;
 
 export default function IncidentsPage() {
+  const { t } = useI18n();
+  const f = useFormat();
   const [severity, setSeverity] = useState<string>("ALL");
   const [status, setStatus]     = useState<string>("ALL");
 
@@ -51,9 +54,9 @@ export default function IncidentsPage() {
           <AlertTriangle className="h-6 w-6 text-risk-high" />
         </div>
         <div>
-          <h1 className="font-display text-3xl tracking-tight">Incidents</h1>
+          <h1 className="font-display text-3xl tracking-tight">{t("safety.incidents.title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {data?.summary.total ?? 0} total · AI-powered root cause analysis
+            {t("safety.incidents.subtitle", { n: data?.summary.total ?? 0 })}
           </p>
         </div>
       </div>
@@ -66,12 +69,12 @@ export default function IncidentsPage() {
             type="button"
             onClick={() => setSeverity(severity === sev ? "ALL" : sev)}
             className={cn(
-              "rounded-md border p-3 text-left transition-all",
+              "rounded-md border p-3 text-start transition-all",
               severity === sev ? "ring-2 ring-primary" : "",
               riskColor(sev),
             )}
           >
-            <div className="text-[10px] uppercase tracking-widest opacity-80">{sev}</div>
+            <div className="text-[10px] uppercase tracking-widest opacity-80">{f.enum("severity", sev)}</div>
             <div className="num mt-1 text-2xl font-semibold">{bySev[sev] ?? 0}</div>
           </button>
         ))}
@@ -91,14 +94,14 @@ export default function IncidentsPage() {
                 : "border-border bg-background/30 text-muted-foreground hover:text-foreground",
             )}
           >
-            {s === "ALL" ? "All statuses" : s.charAt(0) + s.slice(1).toLowerCase()}
+            {s === "ALL" ? t("safety.incidents.allStatuses") : f.enum("status", s)}
           </button>
         ))}
       </div>
 
       {loading && (
         <div className="py-12 text-center text-sm text-muted-foreground">
-          Loading incidents...
+          {t("safety.incidents.loading")}
         </div>
       )}
 
@@ -108,7 +111,7 @@ export default function IncidentsPage() {
 
       {!loading && data?.incidents.length === 0 && (
         <div className="py-12 text-center text-sm text-muted-foreground">
-          No incidents match the filters.
+          {t("safety.incidents.noMatch")}
         </div>
       )}
     </div>
@@ -116,6 +119,8 @@ export default function IncidentsPage() {
 }
 
 function IncidentCard({ inc }: { inc: Incident }) {
+  const { t } = useI18n();
+  const f = useFormat();
   const isAIed = !!inc.aiAnalysis;
   return (
     <Link href={`/safety/incidents/${inc.id}`}>
@@ -126,7 +131,7 @@ function IncidentCard({ inc }: { inc: Incident }) {
               "rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase",
               riskColor(inc.severity)
             )}>
-              {inc.severity}
+              {f.enum("severity", inc.severity)}
             </span>
             <span className="num text-[10px] text-muted-foreground">
               {inc.incidentNumber}
@@ -138,9 +143,9 @@ function IncidentCard({ inc }: { inc: Incident }) {
           </div>
 
           <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-            <div>{inc.type.replace(/_/g, " ")} · {inc.location}</div>
+            <div>{f.enum("incidentType", inc.type)} · {inc.location}</div>
             {inc.site && <div>📍 {inc.site.name}</div>}
-            <div>🕒 {timeAgo(inc.occurredAt)}</div>
+            <div>🕒 {f.relative(inc.occurredAt)}</div>
           </div>
 
           <div className="mt-3 flex items-center justify-between">
@@ -152,15 +157,15 @@ function IncidentCard({ inc }: { inc: Incident }) {
                   ? "border-risk-medium/40 bg-risk-medium/10 text-risk-medium"
                   : "border-risk-high/40 bg-risk-high/10 text-risk-high",
             )}>
-              {inc.status}
+              {f.enum("status", inc.status)}
             </span>
             <div className="flex items-center gap-2">
               {isAIed && (
-                <span title="AI analyzed">
+                <span title={t("safety.incidents.aiAnalysed")}>
                   <Brain className="h-3.5 w-3.5 text-primary" />
                 </span>
               )}
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground rtl:rotate-180" />
             </div>
           </div>
         </CardContent>

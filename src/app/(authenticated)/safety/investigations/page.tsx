@@ -4,10 +4,21 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import Link          from "next/link";
 import {
   Search, Plus, X, Loader2, Brain, FlaskConical,
-  AlertTriangle, RefreshCw, ChevronRight, Calendar,
+  RefreshCw, ChevronRight, Calendar,
   User as UserIcon, MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFormat, useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/translate";
+import { TONE_EDGE, toneFor } from "@/lib/ui/tone";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -46,33 +57,17 @@ interface Stats {
 
 type Filter = "ALL" | "OPEN" | "IN_REVIEW" | "CLOSED";
 
-// ─────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────
-
-const SEV_STRIP: Record<string, string> = {
-  LOW:      "bg-green-500",
-  MEDIUM:   "bg-yellow-500",
-  HIGH:     "bg-orange-500",
-  CRITICAL: "bg-red-500",
-};
-const SEV_BADGE: Record<string, string> = {
-  LOW:      "border-green-500/40  text-green-400",
-  MEDIUM:   "border-yellow-500/40 text-yellow-400",
-  HIGH:     "border-orange-500/40 text-orange-400",
-  CRITICAL: "border-red-500/40    text-red-400",
-};
-const STATUS_BADGE: Record<string, string> = {
-  OPEN:      "bg-amber-500/15  text-amber-400",
-  IN_REVIEW: "bg-primary/15    text-primary",
-  CLOSED:    "bg-green-500/15  text-green-400",
-};
+const FILTERS: Filter[] = ["ALL", "OPEN", "IN_REVIEW", "CLOSED"];
+/** Only HSSE roles can lead an investigation (enforced by the API too). */
+const LEAD_ROLES = ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"];
 
 // ─────────────────────────────────────────────────────────────
 // Main Page
 // ─────────────────────────────────────────────────────────────
 
 export default function InvestigationsPage() {
+  const { t } = useI18n();
+  const f = useFormat();
   const [items,       setItems]       = useState<Investigation[]>([]);
   const [stats,       setStats]       = useState<Stats | null>(null);
   const [openInc,     setOpenInc]     = useState<OpenIncident[]>([]);
@@ -85,6 +80,7 @@ export default function InvestigationsPage() {
   const [selIncident, setSelIncident] = useState("");
   const [selLead,     setSelLead]     = useState("");
   const [creating,    setCreating]    = useState(false);
+  const [formError,   setFormError]   = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -111,7 +107,7 @@ export default function InvestigationsPage() {
   const loadMembers = useCallback(async () => {
     const r = await fetch("/api/tasks?members=1");
     const j = await r.json();
-    if (j.ok) setMembers(j.data.users ?? []);
+    if (j.ok) setMembers((j.data.users ?? []).filter((u: { role: string }) => LEAD_ROLES.includes(u.role)));
   }, []);
 
   useEffect(() => { loadList(); loadStats(); }, [loadList, loadStats]);
@@ -121,6 +117,7 @@ export default function InvestigationsPage() {
     e.preventDefault();
     if (!selIncident) return;
     setCreating(true);
+    setFormError(null);
     const r = await fetch("/api/investigations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -131,147 +128,107 @@ export default function InvestigationsPage() {
       setShowNew(false); setSelIncident(""); setSelLead("");
       await Promise.all([loadList(), loadStats(), loadOpenIncidents()]);
     } else {
-      alert(j.error?.message ?? "Failed to open investigation");
+      setFormError(j.error?.message ?? t("safety.inv.form.failed"));
     }
     setCreating(false);
   }
 
-
-
-
   return (
-    <div className="container mx-auto max-w-5xl px-6 py-6 space-y-5">
+    <div className="container mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6">
+      <PageHeader
+        title={<span className="flex items-center gap-2.5"><Search className="h-6 w-6 text-primary" /> {t("safety.inv.title")}</span>}
+        description={t("safety.inv.subtitle")}
+        actions={
+          <>
+            <Button variant="outline" size="icon" aria-label={t("safety.inv.refresh")} onClick={() => { loadList(); loadStats(); }}>
+              <RefreshCw />
+            </Button>
+            <Button variant={showNew ? "outline" : "default"} onClick={() => setShowNew((v) => !v)}>
+              {showNew ? <><X /> {t("safety.inv.cancel")}</> : <><Plus /> {t("safety.inv.new")}</>}
+            </Button>
+          </>
+        }
+      />
 
-      {/* ── Header ───────────────────────────────────────── */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-display text-3xl tracking-tight flex items-center gap-2.5">
-            <Search className="h-7 w-7 text-primary" />
-            Investigations
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Root-cause investigations with AI-assisted 5-Whys analysis
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { loadList(); loadStats(); }}
-            className="rounded-lg border border-border/40 p-2.5 text-muted-foreground hover:text-foreground">
-            <RefreshCw className="h-4 w-4" />
-          </button>
-
-
-          <button onClick={() => setShowNew((v) => !v)}
-            className={cn(
-              "flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all",
-              showNew
-                ? "bg-muted text-muted-foreground border border-border"
-                : "bg-primary text-primary-foreground hover:bg-primary/90"
-            )}>
-            {showNew ? <><X className="h-4 w-4" /> Cancel</> : <><Plus className="h-4 w-4" /> New Investigation</>}
-          </button>
-        </div>
+      {/* ── KPI strip ────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Kpi label={t("safety.inv.kpi.total")}    value={stats?.total    ?? 0} />
+        <Kpi label={t("safety.inv.kpi.open")}     value={stats?.open     ?? 0} tone="text-warning" />
+        <Kpi label={t("safety.inv.kpi.inReview")} value={stats?.inReview ?? 0} tone="text-info" />
+        <Kpi label={t("safety.inv.kpi.closed")}   value={stats?.closed   ?? 0} tone="text-success" />
+        <Kpi label={t("safety.inv.kpi.ai")}       value={stats?.withAI   ?? 0} tone="text-primary" />
       </div>
 
-      {/* ── KPI Strip ────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Kpi icon="📋" label="Total"       value={stats?.total   ?? 0} tone="neutral" />
-        <Kpi icon="🔍" label="Open"        value={stats?.open    ?? 0} tone="warn"    />
-        <Kpi icon="⏳" label="In Review"   value={stats?.inReview ?? 0} tone="info"   />
-        <Kpi icon="✅" label="Closed"      value={stats?.closed  ?? 0} tone="ok"      />
-        <Kpi icon="🤖" label="AI Analysed" value={stats?.withAI  ?? 0} tone="ai"      />
-      </div>
-
-      {/* ══ NEW INVESTIGATION FORM ═══════════════════════ */}
+      {/* ══ New investigation form ══════════════════════════ */}
       {showNew && (
-        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-5 space-y-4">
-          <h2 className="font-semibold text-sm flex items-center gap-2">
-            <Plus className="h-4 w-4 text-primary" /> Open New Investigation
-          </h2>
-          {openInc.length === 0 ? (
-            <div className="rounded-lg border border-border/30 bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
-              No incidents without an investigation. All incidents have investigations or no incidents exist yet.
-            </div>
-          ) : (
-            <form onSubmit={handleCreate} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                    Incident *
-                  </label>
-                  <select value={selIncident} onChange={(e) => setSelIncident(e.target.value)} required
-                    className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none">
-                    <option value="">— Select incident —</option>
-                    {openInc.map((inc) => (
-                      <option key={inc.id} value={inc.id}>
-                        [{inc.severity}] {inc.incidentNumber} — {inc.title.slice(0, 60)}
-                      </option>
-                    ))}
-                  </select>
+        <Card>
+          <CardContent className="space-y-4 p-5">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <FlaskConical className="h-4 w-4 text-primary" /> {t("safety.inv.form.heading")}
+            </h2>
+            {openInc.length === 0 ? (
+              <p className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">{t("safety.inv.form.noIncidents")}</p>
+            ) : (
+              <form onSubmit={handleCreate} className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="inv-incident">{t("safety.inv.form.incident")}</Label>
+                    <NativeSelect id="inv-incident" value={selIncident} onChange={(e) => setSelIncident(e.target.value)} required>
+                      <option value="">{t("safety.inv.form.incidentPh")}</option>
+                      {openInc.map((inc) => (
+                        <option key={inc.id} value={inc.id}>
+                          [{f.enum("severity", inc.severity)}] {inc.incidentNumber} — {inc.title.slice(0, 60)}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="inv-lead">{t("safety.inv.form.lead")}</Label>
+                    <NativeSelect id="inv-lead" value={selLead} onChange={(e) => setSelLead(e.target.value)}>
+                      <option value="">{t("safety.inv.form.leadPh")}</option>
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name} ({t(`roles.${m.role}` as MessageKey)})</option>
+                      ))}
+                    </NativeSelect>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                    Lead Investigator
-                  </label>
-                  <select value={selLead} onChange={(e) => setSelLead(e.target.value)}
-                    className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none">
-                    <option value="">— Current user —</option>
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name} ({m.role})</option>
-                    ))}
-                  </select>
+                {formError && <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{formError}</p>}
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setShowNew(false)}>{t("safety.inv.cancel")}</Button>
+                  <Button type="submit" disabled={creating || !selIncident}>
+                    {creating ? <Loader2 className="animate-spin" /> : <FlaskConical />}
+                    {t("safety.inv.form.open")}
+                  </Button>
                 </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowNew(false)}
-                  className="rounded-lg border border-border/50 px-4 py-2 text-sm text-muted-foreground hover:bg-muted">
-                  Cancel
-                </button>
-                <button type="submit" disabled={creating || !selIncident}
-                  className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-                  {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                  Open Investigation
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      {/* ── Filter Tabs ──────────────────────────────────── */}
-      <div className="flex flex-wrap gap-2">
-        {(["ALL", "OPEN", "IN_REVIEW", "CLOSED"] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
+      {/* ── Filter ───────────────────────────────────────── */}
+      <div className="flex flex-wrap gap-2" role="tablist">
+        {FILTERS.map((v) => (
+          <button key={v} type="button" role="tab" aria-selected={filter === v} onClick={() => setFilter(v)}
             className={cn(
-              "rounded-full border px-4 py-1.5 text-xs font-medium transition-colors",
-              filter === f
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border/50 text-muted-foreground hover:border-primary/50"
+              "rounded-full px-4 py-1.5 text-sm transition-colors",
+              filter === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
             )}>
-            {f.replace("_", " ")}
+            {t(`safety.inv.filter.${v}` as MessageKey)}
           </button>
         ))}
-        <span className="ml-auto text-xs text-muted-foreground self-center">{items.length} record{items.length !== 1 ? "s" : ""}</span>
       </div>
 
       {/* ══ LIST ════════════════════════════════════════════ */}
       {loading ? (
-        <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-        </div>
+        <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-28 w-full" />)}</div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/50 bg-muted/5 py-16 text-center space-y-3">
-          <div className="text-4xl">🔍</div>
-          <div className="font-semibold">No investigations yet</div>
-          <div className="text-sm text-muted-foreground max-w-sm mx-auto">
-            Open an investigation from an existing incident.
-          </div>
-          <div className="flex justify-center gap-2">
-            <button onClick={() => setShowNew(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-              <Plus className="h-4 w-4" /> New Investigation
-            </button>
-          </div>
-        </div>
+        <EmptyState
+          icon={Search}
+          title={t("safety.inv.empty")}
+          description={t("safety.inv.emptyHint")}
+          action={<Button onClick={() => setShowNew(true)}><Plus /> {t("safety.inv.new")}</Button>}
+        />
       ) : (
         <div className="space-y-3">
           {items.map((inv) => <InvestigationCard key={inv.id} inv={inv} />)}
@@ -286,6 +243,8 @@ export default function InvestigationsPage() {
 // ─────────────────────────────────────────────────────────────
 
 function InvestigationCard({ inv }: { inv: Investigation }) {
+  const { t } = useI18n();
+  const f = useFormat();
   // Try to parse AI analysis from summary
   let aiSummary: string | null = null;
   let riskLevel: string | null = null;
@@ -298,70 +257,51 @@ function InvestigationCard({ inv }: { inv: Investigation }) {
   }
 
   return (
-    <div className="relative flex overflow-hidden rounded-xl border border-border/40 bg-background/60 backdrop-blur hover:border-border/70 transition-all">
-      {/* Severity strip */}
-      <div className={cn("w-1 shrink-0 rounded-l-xl", SEV_STRIP[inv.incident.severity] ?? "bg-border")} />
-
-      <div className="flex-1 px-4 py-4 min-w-0 space-y-2.5">
+    <Card className={cn("flex overflow-hidden border-s-4", TONE_EDGE[toneFor(inv.incident.severity)])}>
+      <CardContent className="min-w-0 flex-1 space-y-2.5 p-4">
         {/* Top row */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[10px] text-muted-foreground">{inv.incident.incidentNumber}</span>
-          <span className={cn("rounded border px-1.5 py-0.5 text-[10px] font-semibold", SEV_BADGE[inv.incident.severity])}>
-            {inv.incident.severity}
-          </span>
-          <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", STATUS_BADGE[inv.status] ?? "bg-muted/30 text-muted-foreground")}>
-            {inv.status.replace("_", " ")}
-          </span>
+          <span className="font-mono text-xs text-muted-foreground">{inv.incident.incidentNumber}</span>
+          <StatusBadge value={inv.incident.severity} group="severity" />
+          <StatusBadge value={inv.status} />
           {inv.hasAIEvidence && (
-            <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary flex items-center gap-1">
-              <Brain className="h-2.5 w-2.5" /> AI ANALYSED
+            <span className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+              <Brain className="h-3 w-3" /> {t("safety.inv.aiAnalysed")}
             </span>
           )}
           {riskLevel && (
-            <span className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] font-medium",
-              riskLevel === "CRITICAL" ? "bg-red-500/15 text-red-400" :
-              riskLevel === "HIGH"     ? "bg-orange-500/15 text-orange-400" :
-              riskLevel === "MEDIUM"   ? "bg-yellow-500/15 text-yellow-400" : "bg-green-500/15 text-green-400"
-            )}>
-              {riskLevel} RISK
-            </span>
+            <StatusBadge value={riskLevel} group="severity" className="opacity-90" />
           )}
         </div>
 
         {/* Title */}
-        <div className="font-semibold text-sm leading-snug">{inv.incident.title}</div>
+        <div className="text-sm font-semibold leading-snug">{inv.incident.title}</div>
 
         {/* AI summary or root cause */}
         {(aiSummary || inv.rootCause) && (
-          <div className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-2.5 line-clamp-2">
+          <div className="line-clamp-2 border-s-2 border-primary/30 ps-2.5 text-sm text-muted-foreground">
             {aiSummary ?? inv.rootCause}
           </div>
         )}
 
         {!inv.hasAIEvidence && !inv.rootCause && (
-          <div className="text-xs text-muted-foreground/60 italic">
-            No analysis yet — open investigation to run AI 5-Whys
-          </div>
+          <div className="text-xs italic text-muted-foreground">{t("safety.inv.noAnalysis")}</div>
         )}
 
         {/* Meta */}
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {inv.incident.location}</span>
-          <span className="flex items-center gap-1"><UserIcon className="h-3 w-3" /> {inv.leadInvestigator.name}</span>
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {new Date(inv.incident.occurredAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-          </span>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {inv.incident.location}</span>
+          <span className="flex items-center gap-1"><UserIcon className="h-3.5 w-3.5" /> {inv.leadInvestigator.name}</span>
+          <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> {f.date(inv.incident.occurredAt)}</span>
         </div>
-      </div>
+      </CardContent>
 
-      {/* Arrow */}
-      <Link href={`/safety/investigations/${inv.id}`}
-        className="flex items-center px-4 border-l border-border/30 text-muted-foreground hover:text-primary transition-colors">
-        <ChevronRight className="h-5 w-5" />
+      {/* Open */}
+      <Link href={`/safety/investigations/${inv.id}`} aria-label={t("safety.inv.open")}
+        className="flex items-center border-s border-border px-4 text-muted-foreground transition-colors hover:text-primary">
+        <ChevronRight className="h-5 w-5 rtl:rotate-180" />
       </Link>
-    </div>
+    </Card>
   );
 }
 
@@ -369,22 +309,13 @@ function InvestigationCard({ inv }: { inv: Investigation }) {
 // KPI
 // ─────────────────────────────────────────────────────────────
 
-type KpiTone = "neutral" | "warn" | "info" | "ok" | "ai";
-
-function Kpi({ icon, label, value, tone }: { icon: string; label: string; value: number; tone: KpiTone }) {
-  const cls: Record<KpiTone, { border: string; text: string }> = {
-    neutral: { border: "border-border/40",                           text: "text-foreground"   },
-    warn:    { border: value > 0 ? "border-amber-500/40 bg-amber-500/5"   : "border-border/40", text: value > 0 ? "text-amber-400"  : "text-muted-foreground" },
-    info:    { border: value > 0 ? "border-primary/30  bg-primary/5"     : "border-border/40", text: value > 0 ? "text-primary"    : "text-muted-foreground" },
-    ok:      { border: value > 0 ? "border-green-500/30 bg-green-500/5"  : "border-border/40", text: value > 0 ? "text-green-400"  : "text-muted-foreground" },
-    ai:      { border: value > 0 ? "border-primary/40  bg-primary/8"     : "border-border/40", text: value > 0 ? "text-primary"    : "text-muted-foreground" },
-  };
+function Kpi({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
-    <div className={cn("rounded-xl border p-4", cls[tone].border)}>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-        <span>{icon}</span> {label}
-      </div>
-      <div className={cn("mt-1.5 font-display text-2xl tabular-nums", cls[tone].text)}>{value}</div>
-    </div>
+    <Card>
+      <CardContent className="p-3">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className={cn("num mt-1 text-2xl font-semibold", tone)}>{value}</div>
+      </CardContent>
+    </Card>
   );
 }

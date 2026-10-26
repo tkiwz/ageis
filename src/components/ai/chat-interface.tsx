@@ -11,16 +11,12 @@ import {
 import { cn } from "@/lib/utils";
 import type { ChatMessage, ChatResponse } from "@/types/ai";
 import type { ApiResponse } from "@/types";
+import { useI18n } from "@/lib/i18n/client";
 
 const STORAGE_KEY = "aegis-chat-history";
 const MAX_STORED_MESSAGES = 50;
 
-const SUGGESTED_PROMPTS = [
-  { ar: "كم موقع لدينا في عُمان؟", en: "How many sites do we have in Oman?" },
-  { ar: "ما هي بروتوكولات تسرب النفط؟", en: "What are oil spill response protocols?" },
-  { ar: "اشرح إجراءات الإخلاء", en: "Explain evacuation procedures" },
-  { ar: "كيف نتعامل مع ارتفاع الغاز؟", en: "How do we handle elevated gas levels?" },
-];
+const SUGGESTED_PROMPTS = ["p1", "p2", "p3", "p4"] as const;
 
 // ─── Utilities ───
 function isRTL(text: string): boolean {
@@ -116,6 +112,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
 
 // ─── Main Component ───
 export function ChatInterface() {
+  const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -232,20 +229,20 @@ export function ChatInterface() {
             <Brain className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <div className="text-base font-medium">AEGIS Intelligence</div>
-            <div className="text-xs text-muted-foreground">Powered by SQAPS · HSSE Expert Assistant</div>
+            <div className="text-base font-medium">{t("intel.chat.cardTitle")}</div>
+            <div className="text-xs text-muted-foreground">{t("intel.chat.cardSub")}</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {lastUsage && (
             <span className="hidden text-[10px] text-muted-foreground sm:inline num">
-              {lastUsage.in + lastUsage.out} tokens
+              {t("intel.chat.tokens", { n: lastUsage.in + lastUsage.out })}
             </span>
           )}
           {messages.length > 0 && (
             <Button variant="ghost" size="sm" onClick={clearChat}>
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-              New chat
+              <Trash2 className="h-3.5 w-3.5" />
+              {t("intel.chat.newChat")}
             </Button>
           )}
         </div>
@@ -271,7 +268,7 @@ export function ChatInterface() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask AEGIS anything... (Enter to send, Shift+Enter for new line)"
+            placeholder={t("intel.chat.placeholder")}
             disabled={loading}
             rows={1}
             dir={isRTL(input) ? "rtl" : "ltr"}
@@ -293,6 +290,7 @@ export function ChatInterface() {
 }
 
 function MessageBubble({ message }: { message: ChatMessage }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
   const rtl = isRTL(message.content);
@@ -331,7 +329,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             onClick={copy}
             className="flex items-center gap-1 self-start text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
           >
-            {copied ? (<><Check className="h-3 w-3" /> Copied</>) : (<><Copy className="h-3 w-3" /> Copy</>)}
+            {copied ? (<><Check className="h-3 w-3" /> {t("intel.chat.copied")}</>) : (<><Copy className="h-3 w-3" /> {t("intel.chat.copy")}</>)}
           </button>
         )}
       </div>
@@ -357,6 +355,7 @@ function LoadingBubble() {
 }
 
 function ErrorBubble({ error, onRetry }: { error: string; onRetry: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="flex gap-3">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-risk-critical/30 bg-risk-critical/10">
@@ -364,13 +363,13 @@ function ErrorBubble({ error, onRetry }: { error: string; onRetry: () => void })
       </div>
       <div className="flex-1 rounded-lg border border-risk-critical/40 bg-risk-critical/5 px-4 py-2.5 text-sm">
         <div className="flex items-center justify-between gap-2">
-          <div className="font-medium text-risk-critical">Error</div>
+          <div className="font-medium text-risk-critical">{t("intel.chat.error")}</div>
           <button
             type="button"
             onClick={onRetry}
             className="flex items-center gap-1 rounded-md border border-border/40 bg-background/50 px-2 py-1 text-xs transition-colors hover:bg-accent/30"
           >
-            <RotateCcw className="h-3 w-3" /> Retry
+            <RotateCcw className="h-3 w-3" /> {t("intel.chat.retry")}
           </button>
         </div>
         <div className="mt-1 text-muted-foreground">{error}</div>
@@ -380,21 +379,22 @@ function ErrorBubble({ error, onRetry }: { error: string; onRetry: () => void })
 }
 
 function EmptyState({ onSelectPrompt }: { onSelectPrompt: (p: string) => void }) {
+  const { t } = useI18n();
   return (
     <div className="py-8 text-center">
       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-primary/30 bg-primary/10">
         <Sparkles className="h-6 w-6 text-primary" />
       </div>
-      <h3 className="font-display text-lg">Welcome to AEGIS Intelligence</h3>
+      <h3 className="font-display text-lg">{t("intel.chat.welcome")}</h3>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Ask anything about HSSE operations, safety protocols, or system status.
+        {t("intel.chat.welcomeBody")}
         <br />
-        <span className="text-xs">Responds in Arabic or English. Press Enter to send, Shift+Enter for new line.</span>
+        <span className="text-xs">{t("intel.chat.welcomeHint")}</span>
       </p>
       <div className="mx-auto mt-6 flex max-w-md flex-col gap-3">
-        {SUGGESTED_PROMPTS.map((p, i) => (
-          <Button key={i} variant="outline" onClick={() => onSelectPrompt(p.en)}>
-            {p.en}
+        {SUGGESTED_PROMPTS.map((p) => (
+          <Button key={p} variant="outline" className="h-auto whitespace-normal py-2" onClick={() => onSelectPrompt(t(`intel.chat.prompts.${p}`))}>
+            {t(`intel.chat.prompts.${p}`)}
           </Button>
         ))}
       </div>

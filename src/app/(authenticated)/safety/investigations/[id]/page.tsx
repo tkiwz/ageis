@@ -4,10 +4,17 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useParams }                        from "next/navigation";
 import Link                                  from "next/link";
 import {
-  ArrowLeft, Brain, Loader2, CheckCircle2, Clock, AlertTriangle,
-  ChevronDown, ChevronUp, Pencil, Save, X, RotateCcw,
+  ArrowLeft, Brain, Loader2, CheckCircle2, Clock, ChevronDown, ChevronUp,
+  Pencil, Save, X, RotateCcw, MapPin, Calendar, Target, ClipboardList, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFormat, useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/translate";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -70,23 +77,9 @@ interface Investigation {
   };
 }
 
-// ─────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────
-
-const SEV_BADGE: Record<string, string> = {
-  LOW:      "border-green-500/40  bg-green-500/10  text-green-400",
-  MEDIUM:   "border-yellow-500/40 bg-yellow-500/10 text-yellow-400",
-  HIGH:     "border-orange-500/40 bg-orange-500/10 text-orange-400",
-  CRITICAL: "border-red-500/40    bg-red-500/10    text-red-400",
-};
 const STATUS_FLOW: Record<string, string> = {
   OPEN:      "IN_REVIEW",
   IN_REVIEW: "CLOSED",
-};
-const STATUS_LABEL: Record<string, string> = {
-  OPEN:      "Mark In Review",
-  IN_REVIEW: "Close Investigation",
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -94,6 +87,8 @@ const STATUS_LABEL: Record<string, string> = {
 // ─────────────────────────────────────────────────────────────
 
 export default function InvestigationDetailPage() {
+  const { t } = useI18n();
+  const f = useFormat();
   const params   = useParams<{ id: string }>();
   const id       = params.id;
 
@@ -102,6 +97,7 @@ export default function InvestigationDetailPage() {
   const [loading,     setLoading]     = useState(true);
   const [running,     setRunning]     = useState(false);
   const [advancing,   setAdvancing]   = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
 
   // Edit root cause
   const [editing,   setEditing]   = useState(false);
@@ -130,8 +126,9 @@ export default function InvestigationDetailPage() {
   useEffect(() => { loadInv(); }, [loadInv]);
 
   async function runAnalysis() {
-    if (!confirm("Run AEGIS AI 5-Whys analysis on this incident? This will overwrite any existing analysis.")) return;
+    if (!confirm(t("safety.inv.detail.confirmRun"))) return;
     setRunning(true);
+    setError(null);
     const r = await fetch(`/api/investigations/${id}/analyze`, { method: "POST" });
     const j = await r.json();
     if (j.ok) {
@@ -139,7 +136,7 @@ export default function InvestigationDetailPage() {
       setInv((prev) => prev ? { ...prev, hasAIEvidence: true, rootCause: j.data.analysis.rootCause, summary: JSON.stringify(j.data.analysis) } : prev);
       setShowWhys(true);
     } else {
-      alert(j.error?.message ?? "Analysis failed");
+      setError(j.error?.message ?? t("safety.inv.detail.runFailed"));
     }
     setRunning(false);
   }
@@ -149,6 +146,7 @@ export default function InvestigationDetailPage() {
     const next = STATUS_FLOW[inv.status];
     if (!next) return;
     setAdvancing(true);
+    setError(null);
     const r = await fetch(`/api/investigations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -156,11 +154,13 @@ export default function InvestigationDetailPage() {
     });
     const j = await r.json();
     if (j.ok) setInv((prev) => prev ? { ...prev, status: next } : prev);
+    else setError(j.error?.message ?? t("safety.inv.detail.updateFailed"));
     setAdvancing(false);
   }
 
   async function saveRootCause() {
     setSaving(true);
+    setError(null);
     const r = await fetch(`/api/investigations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -170,270 +170,232 @@ export default function InvestigationDetailPage() {
     if (j.ok) {
       setInv((prev) => prev ? { ...prev, rootCause: editVal } : prev);
       setEditing(false);
+    } else {
+      setError(j.error?.message ?? t("safety.inv.detail.updateFailed"));
     }
     setSaving(false);
   }
 
   if (loading) return (
-    <div className="flex h-64 items-center justify-center gap-2 text-muted-foreground text-sm">
-      <Loader2 className="h-4 w-4 animate-spin" /> Loading investigation…
+    <div className="container mx-auto max-w-4xl space-y-4 px-4 py-6 sm:px-6" aria-label={t("safety.inv.detail.loading")}>
+      <Skeleton className="h-40 w-full" />
+      <Skeleton className="h-24 w-full" />
     </div>
   );
   if (!inv) return (
-    <div className="flex h-64 items-center justify-center text-muted-foreground text-sm">
-      Investigation not found.
+    <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+      {t("safety.inv.detail.notFound")}
     </div>
   );
 
   const statusNext = STATUS_FLOW[inv.status];
 
   return (
-    <div className="container mx-auto max-w-4xl px-6 py-6 space-y-5">
+    <div className="container mx-auto max-w-4xl space-y-5 px-4 py-6 sm:px-6">
 
       {/* ── Back + Header ─────────────────────────────────── */}
-      <div className="flex items-center gap-3">
-        <Link href="/safety/investigations"
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="h-4 w-4" /> All Investigations
-        </Link>
-      </div>
+      <Link href="/safety/investigations"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+        <ArrowLeft className="h-4 w-4 rtl:rotate-180" /> {t("safety.inv.detail.back")}
+      </Link>
 
-      <div className="rounded-2xl border border-border/40 bg-background/60 p-5 space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs text-muted-foreground">{inv.incident.incidentNumber}</span>
-              <span className={cn("rounded border px-2 py-0.5 text-xs font-semibold", SEV_BADGE[inv.incident.severity])}>
-                {inv.incident.severity}
-              </span>
-              <InvStatusBadge status={inv.status} />
-              {inv.hasAIEvidence && (
-                <span className="rounded border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs text-primary flex items-center gap-1">
-                  <Brain className="h-3 w-3" /> AI ANALYSED
-                </span>
-              )}
+      <Card>
+        <CardContent className="space-y-3 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-xs text-muted-foreground">{inv.incident.incidentNumber}</span>
+                <StatusBadge value={inv.incident.severity} group="severity" />
+                <StatusBadge value={inv.status} />
+                {inv.hasAIEvidence && (
+                  <span className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                    <Brain className="h-3 w-3" /> {t("safety.inv.aiAnalysed")}
+                  </span>
+                )}
+              </div>
+              <h1 className="font-display text-xl leading-snug">{inv.incident.title}</h1>
+              <p className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {inv.incident.location}</span>
+                <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> {f.dateTime(inv.incident.occurredAt)}</span>
+              </p>
             </div>
-            <h1 className="font-display text-xl leading-snug">{inv.incident.title}</h1>
-            <p className="text-sm text-muted-foreground">
-              📍 {inv.incident.location} &nbsp;·&nbsp; 📅 {new Date(inv.incident.occurredAt).toLocaleString("en-GB")}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {statusNext && (
+                <Button variant="outline" size="sm" onClick={advanceStatus} disabled={advancing}>
+                  {advancing ? <Loader2 className="animate-spin" /> : <ChevronUp />}
+                  {inv.status === "OPEN" ? t("safety.inv.detail.toReview") : t("safety.inv.detail.close")}
+                </Button>
+              )}
+              <Button size="sm" onClick={runAnalysis} disabled={running}>
+                {running ? <Loader2 className="animate-spin" /> : <Brain />}
+                {running ? t("safety.inv.detail.analysing") : t("safety.inv.detail.run")}
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {statusNext && (
-              <button onClick={advanceStatus} disabled={advancing}
-                className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs hover:border-primary/40 hover:text-primary disabled:opacity-50">
-                {advancing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronUp className="h-3.5 w-3.5" />}
-                {STATUS_LABEL[inv.status]}
-              </button>
-            )}
-            <button onClick={runAnalysis} disabled={running}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-              {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
-              {running ? "Analysing…" : "Run AI Analysis"}
-            </button>
+
+          {error && <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+
+          {/* Incident description */}
+          {inv.incident.description && (
+            <p className="border-t border-border pt-3 text-sm text-muted-foreground">{inv.incident.description}</p>
+          )}
+
+          {/* Lead + dates */}
+          <div className="flex flex-wrap gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
+            <span>
+              {t("safety.inv.detail.lead")}: <strong className="text-foreground">{inv.leadInvestigator.name}</strong> ({t(`roles.${inv.leadInvestigator.role}` as MessageKey)})
+            </span>
+            {inv.leadInvestigator.department && <span>{inv.leadInvestigator.department}</span>}
+            <span>{t("safety.inv.detail.opened")}: {f.dateTime(inv.createdAt)}</span>
+            <span>{t("safety.inv.detail.updated")}: {f.dateTime(inv.updatedAt)}</span>
           </div>
-        </div>
-
-        {/* Incident description */}
-        {inv.incident.description && (
-          <p className="text-sm text-muted-foreground border-t border-border/30 pt-3">
-            {inv.incident.description}
-          </p>
-        )}
-
-        {/* Lead + dates */}
-        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground border-t border-border/30 pt-3">
-          <span>🔍 Lead: <strong className="text-foreground">{inv.leadInvestigator.name}</strong> ({inv.leadInvestigator.role})</span>
-          {inv.leadInvestigator.department && <span>🏢 {inv.leadInvestigator.department}</span>}
-          <span>📅 Opened: {new Date(inv.createdAt).toLocaleString("en-GB")}</span>
-          <span>🔄 Updated: {new Date(inv.updatedAt).toLocaleString("en-GB")}</span>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* ── Root Cause ────────────────────────────────────── */}
-      <Section title="Root Cause" icon="🎯">
+      <Section title={t("safety.inv.detail.rootCause")} icon={<Target className="h-4 w-4 text-primary" />}>
         {editing ? (
           <div className="space-y-2">
-            <textarea value={editVal} onChange={(e) => setEditVal(e.target.value)} rows={3}
-              className="w-full rounded-lg border border-primary/40 bg-background px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none" />
+            <Textarea value={editVal} onChange={(e) => setEditVal(e.target.value)} rows={3} autoFocus />
             <div className="flex gap-2">
-              <button onClick={saveRootCause} disabled={saving}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50">
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
-              </button>
-              <button onClick={() => setEditing(false)}
-                className="flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
-                <X className="h-3 w-3" /> Cancel
-              </button>
+              <Button size="sm" onClick={saveRootCause} disabled={saving || !editVal.trim()}>
+                {saving ? <Loader2 className="animate-spin" /> : <Save />} {t("safety.inv.detail.save")}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+                <X /> {t("safety.inv.cancel")}
+              </Button>
             </div>
           </div>
         ) : inv.rootCause ? (
           <div className="flex items-start justify-between gap-3">
             <p className="text-sm leading-relaxed">{inv.rootCause}</p>
             {inv.status !== "CLOSED" && (
-              <button onClick={() => { setEditVal(inv.rootCause ?? ""); setEditing(true); }}
+              <button type="button" aria-label={t("safety.inv.detail.edit")}
+                onClick={() => { setEditVal(inv.rootCause ?? ""); setEditing(true); }}
                 className="shrink-0 text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button>
             )}
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground italic space-y-2">
-            No root cause recorded yet.
-            <button onClick={() => { setEditVal(""); setEditing(true); }}
-              className="ml-2 text-primary text-xs hover:underline">Add manually</button>
-            <span className="ml-1 text-xs text-muted-foreground">or</span>
-            <button onClick={runAnalysis} disabled={running}
-              className="ml-1 text-primary text-xs hover:underline disabled:opacity-50">Run AI Analysis</button>
+          <div className="flex flex-wrap items-center gap-2 text-sm italic text-muted-foreground">
+            {t("safety.inv.detail.noRootCause")}
+            <button type="button" onClick={() => { setEditVal(""); setEditing(true); }}
+              className="text-xs not-italic text-primary hover:underline">{t("safety.inv.detail.addManually")}</button>
+            <span className="text-xs">{t("safety.inv.detail.or")}</span>
+            <button type="button" onClick={runAnalysis} disabled={running}
+              className="text-xs not-italic text-primary hover:underline disabled:opacity-50">{t("safety.inv.detail.run")}</button>
           </div>
         )}
       </Section>
 
       {/* ── AI Analysis: 5-Whys ───────────────────────────── */}
       {analysis && (
-        <div className="rounded-2xl border border-primary/20 bg-primary/3 overflow-hidden">
-          <button onClick={() => setShowWhys((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-primary/5 transition-colors">
-            <span className="font-semibold text-sm flex items-center gap-2">
-              <Brain className="h-4 w-4 text-primary" /> AI 5-Whys Analysis
-              {analysis.riskLevel && (
-                <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold",
-                  analysis.riskLevel === "CRITICAL" ? "bg-red-500/20 text-red-400" :
-                  analysis.riskLevel === "HIGH"     ? "bg-orange-500/20 text-orange-400" :
-                  analysis.riskLevel === "MEDIUM"   ? "bg-yellow-500/20 text-yellow-400" : "bg-green-500/20 text-green-400"
-                )}>{analysis.riskLevel} RISK</span>
-              )}
+        <Card className="overflow-hidden">
+          <button type="button" onClick={() => setShowWhys((v) => !v)}
+            className="flex w-full items-center justify-between px-5 py-3.5 text-start transition-colors hover:bg-muted/50">
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <Brain className="h-4 w-4 text-primary" /> {t("safety.inv.detail.whys")}
+              {analysis.riskLevel && <StatusBadge value={analysis.riskLevel} group="severity" />}
             </span>
             {showWhys ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
           </button>
 
           {showWhys && (
-            <div className="px-5 pb-5 space-y-4">
+            <div className="space-y-4 px-5 pb-5">
               {/* Summary */}
               {analysis.summary && (
-                <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
-                  {analysis.summary}
-                </div>
+                <div className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">{analysis.summary}</div>
               )}
 
               {/* 5-Whys timeline */}
-              <div className="space-y-0">
-                {analysis.whys.map((w, i) => (
-                  <div key={i} className="relative pl-8">
-                    {/* Connector line */}
-                    {i < analysis.whys.length - 1 && (
-                      <div className="absolute left-3.5 top-6 bottom-0 w-px bg-border/50" />
-                    )}
-                    {/* Node */}
-                    <div className={cn(
-                      "absolute left-0 top-3 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold border-2",
-                      i === analysis.whys.length - 1
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-background text-muted-foreground"
-                    )}>
-                      {w.level}
+              <div>
+                {analysis.whys.map((w, i) => {
+                  const last = i === analysis.whys.length - 1;
+                  return (
+                    <div key={i} className="relative ps-10">
+                      {!last && <div className="absolute bottom-0 start-3.5 top-6 w-px bg-border" />}
+                      <div className={cn(
+                        "absolute start-0 top-3 flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-bold",
+                        last ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground",
+                      )}>
+                        {w.level}
+                      </div>
+                      <div className={cn("mb-3 rounded-lg border px-4 py-3", last ? "border-primary/30 bg-primary/5" : "border-border bg-muted/40")}>
+                        <div className="mb-0.5 text-xs text-muted-foreground">{w.question}</div>
+                        <div className="text-sm">{w.answer}</div>
+                      </div>
                     </div>
-                    <div className={cn(
-                      "mb-3 rounded-lg border px-4 py-3",
-                      i === analysis.whys.length - 1
-                        ? "border-primary/30 bg-primary/5"
-                        : "border-border/40 bg-muted/10"
-                    )}>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{w.question}</div>
-                      <div className="text-sm">{w.answer}</div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
-              {/* Contributing factors + Corrective actions grid */}
-              <div className="grid sm:grid-cols-3 gap-3">
-                <ListCard
-                  title="Contributing Factors"
-                  icon="⚠️"
-                  items={analysis.contributingFactors}
-                  tone="warn"
-                />
-                <ListCard
-                  title="Immediate Actions"
-                  icon="⚡"
-                  items={analysis.immediateCorrectiveActions}
-                  tone="info"
-                />
-                <ListCard
-                  title="Systemic Prevention"
-                  icon="🛡️"
-                  items={analysis.systemicPreventiveActions}
-                  tone="ok"
-                />
+              {/* Contributing factors + corrective actions */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <ListCard title={t("safety.inv.detail.factors")}   items={analysis.contributingFactors}        tone="warning" />
+                <ListCard title={t("safety.inv.detail.immediate")} items={analysis.immediateCorrectiveActions} tone="info" />
+                <ListCard title={t("safety.inv.detail.systemic")}  items={analysis.systemicPreventiveActions}  tone="success" />
               </div>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {/* ── Bow-Tie Diagram ───────────────────────────────── */}
       {analysis?.bowTie && (
-        <div className="rounded-2xl border border-border/40 overflow-hidden">
-          <button onClick={() => setShowBowTie((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-muted/10 transition-colors">
-            <span className="font-semibold text-sm flex items-center gap-2">🎀 Bow-Tie Risk Diagram</span>
+        <Card className="overflow-hidden">
+          <button type="button" onClick={() => setShowBowTie((v) => !v)}
+            className="flex w-full items-center justify-between px-5 py-3.5 text-start transition-colors hover:bg-muted/50">
+            <span className="flex items-center gap-2 text-sm font-semibold"><Shield className="h-4 w-4 text-primary" /> {t("safety.inv.detail.bowTie")}</span>
             {showBowTie ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
           </button>
           {showBowTie && <BowTieDisplay bt={analysis.bowTie} />}
-        </div>
+        </Card>
       )}
 
       {/* ── Incident Actions / Evidence ───────────────────── */}
       {inv.incident.actions.length > 0 && (
-        <div className="rounded-2xl border border-border/40 overflow-hidden">
-          <button onClick={() => setShowActions((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-muted/10 transition-colors">
-            <span className="font-semibold text-sm flex items-center gap-2">
-              📋 Incident Actions / Evidence
-              <span className="rounded bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {inv.incident.actions.length}
-              </span>
+        <Card className="overflow-hidden">
+          <button type="button" onClick={() => setShowActions((v) => !v)}
+            className="flex w-full items-center justify-between px-5 py-3.5 text-start transition-colors hover:bg-muted/50">
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <ClipboardList className="h-4 w-4 text-primary" /> {t("safety.inv.detail.actions")}
+              <span className="num rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{inv.incident.actions.length}</span>
             </span>
             {showActions ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
           </button>
           {showActions && (
-            <div className="px-5 pb-4 space-y-2">
+            <div className="space-y-2 px-5 pb-4">
               {inv.incident.actions.map((a) => (
-                <div key={a.id} className="flex items-start gap-3 rounded-lg border border-border/30 bg-muted/5 px-3 py-2.5">
+                <div key={a.id} className="flex items-start gap-3 rounded-lg border border-border px-3 py-2.5">
                   <ActionStatusIcon status={a.status} />
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="text-sm">{a.description}</div>
-                    <div className="flex flex-wrap gap-2 mt-1 text-[10px] text-muted-foreground">
-                      <span className={cn(
-                        "rounded px-1.5 py-0.5 font-medium",
-                        a.status === "COMPLETED" ? "bg-green-500/15 text-green-400" :
-                        a.status === "IN_PROGRESS" ? "bg-primary/15 text-primary" : "bg-muted/30"
-                      )}>{a.status.replace("_", " ")}</span>
-                      {a.isAutoGenerated && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-400">AUTO</span>}
-                      {a.dueDate && <span>Due {new Date(a.dueDate).toLocaleDateString("en-GB")}</span>}
-                      {a.completedAt && <span>✅ {new Date(a.completedAt).toLocaleDateString("en-GB")}</span>}
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <StatusBadge value={a.status} />
+                      {a.isAutoGenerated && <span className="rounded-md bg-warning/14 px-1.5 py-0.5 text-warning">{t("safety.inv.detail.auto")}</span>}
+                      {a.dueDate && <span>{t("safety.inv.detail.due", { date: f.date(a.dueDate) })}</span>}
+                      {a.completedAt && <span>{t("safety.inv.detail.done", { date: f.date(a.completedAt) })}</span>}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {/* ── No analysis prompt ────────────────────────────── */}
       {!analysis && !inv.hasAIEvidence && (
-        <div className="rounded-2xl border border-dashed border-primary/30 bg-primary/3 py-8 text-center space-y-3">
-          <div className="text-3xl">🤖</div>
-          <div className="font-semibold text-sm">No AI analysis yet</div>
-          <div className="text-xs text-muted-foreground max-w-sm mx-auto">
-            Run the AEGIS AI 5-Whys analysis to automatically identify root causes, contributing factors, corrective actions, and a Bow-Tie risk diagram.
-          </div>
-          <button onClick={runAnalysis} disabled={running}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-            {running ? "Analysing…" : "Run AI Analysis"}
-          </button>
-        </div>
+        <Card className="border-dashed">
+          <CardContent className="space-y-3 py-8 text-center">
+            <Brain className="mx-auto h-8 w-8 text-primary" />
+            <div className="text-sm font-semibold">{t("safety.inv.detail.noAi")}</div>
+            <div className="mx-auto max-w-sm text-sm text-muted-foreground">{t("safety.inv.detail.noAiHint")}</div>
+            <Button onClick={runAnalysis} disabled={running}>
+              {running ? <Loader2 className="animate-spin" /> : <Brain />}
+              {running ? t("safety.inv.detail.analysing") : t("safety.inv.detail.run")}
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
@@ -443,12 +405,14 @@ export default function InvestigationDetailPage() {
 // Section wrapper
 // ─────────────────────────────────────────────────────────────
 
-function Section({ title, icon, children }: { title: string; icon: string; children: ReactNode }) {
+function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-border/40 bg-background/60 px-5 py-4 space-y-3">
-      <h2 className="font-semibold text-sm flex items-center gap-2">{icon} {title}</h2>
-      {children}
-    </div>
+    <Card>
+      <CardContent className="space-y-3 px-5 py-4">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">{icon} {title}</h2>
+        {children}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -456,18 +420,19 @@ function Section({ title, icon, children }: { title: string; icon: string; child
 // ListCard
 // ─────────────────────────────────────────────────────────────
 
-function ListCard({ title, icon, items, tone }: { title: string; icon: string; items: string[]; tone: "warn" | "info" | "ok" }) {
-  const cls: Record<string, string> = {
-    warn: "border-amber-500/30 bg-amber-500/5",
-    info: "border-primary/30  bg-primary/5",
-    ok:   "border-green-500/30 bg-green-500/5",
-  };
+const LIST_TONE = {
+  warning: "border-warning/30 bg-warning/5",
+  info:    "border-info/30 bg-info/5",
+  success: "border-success/30 bg-success/5",
+} as const;
+
+function ListCard({ title, items, tone }: { title: string; items: string[]; tone: keyof typeof LIST_TONE }) {
   return (
-    <div className={cn("rounded-xl border p-3 space-y-1.5", cls[tone])}>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{icon} {title}</div>
+    <div className={cn("space-y-1.5 rounded-xl border p-3", LIST_TONE[tone])}>
+      <div className="text-xs font-semibold text-muted-foreground">{title}</div>
       <ul className="space-y-1.5">
         {items.map((item, i) => (
-          <li key={i} className="flex items-start gap-1.5 text-xs text-foreground/90">
+          <li key={i} className="flex items-start gap-1.5 text-sm">
             <span className="mt-0.5 shrink-0 text-muted-foreground">·</span>
             <span>{item}</span>
           </li>
@@ -482,39 +447,34 @@ function ListCard({ title, icon, items, tone }: { title: string; icon: string; i
 // ─────────────────────────────────────────────────────────────
 
 function BowTieDisplay({ bt }: { bt: BowTie }) {
+  const { t } = useI18n();
   return (
     <div className="px-5 pb-5">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
         {/* Threats */}
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Threats / Causes</div>
-          {bt.threats.map((t, i) => (
-            <div key={i} className="rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-2 text-xs text-right">
-              {t}
-            </div>
+          <div className="text-end text-xs font-semibold text-muted-foreground">{t("safety.inv.detail.threats")}</div>
+          {bt.threats.map((x, i) => (
+            <div key={i} className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-end text-sm">{x}</div>
           ))}
         </div>
 
         {/* Central bow-tie */}
         <div className="flex flex-col items-center gap-3">
-          <div className="rounded-xl border-2 border-primary bg-primary/10 px-4 py-3 text-center text-xs font-semibold leading-snug w-full">
-            🎀 {bt.topEvent}
+          <div className="w-full rounded-xl border-2 border-primary bg-primary/10 px-4 py-3 text-center text-sm font-semibold leading-snug">
+            {bt.topEvent}
           </div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center">Barriers / Controls</div>
+          <div className="text-center text-xs text-muted-foreground">{t("safety.inv.detail.barriers")}</div>
           {bt.barriers.map((b, i) => (
-            <div key={i} className="rounded-lg border border-green-500/30 bg-green-500/8 px-3 py-2 text-xs text-center w-full">
-              🛡️ {b}
-            </div>
+            <div key={i} className="w-full rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-center text-sm">{b}</div>
           ))}
         </div>
 
         {/* Consequences */}
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Consequences</div>
+          <div className="text-xs font-semibold text-muted-foreground">{t("safety.inv.detail.consequences")}</div>
           {bt.consequences.map((c, i) => (
-            <div key={i} className="rounded-lg border border-orange-500/30 bg-orange-500/8 px-3 py-2 text-xs">
-              {c}
-            </div>
+            <div key={i} className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm">{c}</div>
           ))}
         </div>
       </div>
@@ -523,28 +483,11 @@ function BowTieDisplay({ bt }: { bt: BowTie }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Status Badge
-// ─────────────────────────────────────────────────────────────
-
-function InvStatusBadge({ status }: { status: string }) {
-  const cls: Record<string, string> = {
-    OPEN:      "bg-amber-500/15  text-amber-400",
-    IN_REVIEW: "bg-primary/15    text-primary",
-    CLOSED:    "bg-green-500/15  text-green-400",
-  };
-  return (
-    <span className={cn("rounded px-2 py-0.5 text-xs font-medium", cls[status] ?? "bg-muted/30 text-muted-foreground")}>
-      {status.replace("_", " ")}
-    </span>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
 // Action status icon
 // ─────────────────────────────────────────────────────────────
 
 function ActionStatusIcon({ status }: { status: string }) {
-  if (status === "COMPLETED")   return <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-500 shrink-0" />;
-  if (status === "IN_PROGRESS") return <RotateCcw   className="mt-0.5 h-4 w-4 text-primary shrink-0 animate-spin" style={{ animationDuration: "3s" }} />;
-  return <Clock className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />;
+  if (status === "COMPLETED")   return <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />;
+  if (status === "IN_PROGRESS") return <RotateCcw   className="mt-0.5 h-4 w-4 shrink-0 text-primary" />;
+  return <Clock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />;
 }

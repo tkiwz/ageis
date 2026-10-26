@@ -10,6 +10,7 @@ export const enums: EnumMessages = {
     IN_REVIEW: "قيد المراجعة",
     APPROVED: "معتمد",
     REJECTED: "مرفوض",
+    REVOKED: "أُلغي",
     SUSPENDED: "موقوف",
     EXPIRED: "منتهي",
     CANCELLED: "ملغى",

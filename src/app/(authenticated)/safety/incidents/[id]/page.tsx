@@ -15,6 +15,8 @@ import { ShareInsightButton } from "@/components/knowledge/share-insight-button"
 import { IncidentVideoCard } from "@/components/incidents/incident-video";
 import { IncidentPhotos } from "@/components/incidents/incident-photos";
 import type { ApiResponse } from "@/types";
+import { useFormat, useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/translate";
 
 interface Incident {
   photos?: { id: string }[];
@@ -68,6 +70,8 @@ function parseAI(raw: unknown): AIAnalysis | null {
 }
 
 export default function IncidentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { t } = useI18n();
+  const f = useFormat();
   const { id } = use(params);
   const { data: incident, loading, refresh } = useApi<Incident>(`/api/incidents/${id}`);
 
@@ -85,10 +89,10 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
         method: "POST", credentials: "include",
       });
       const json = (await res.json()) as ApiResponse<{ analysis: AIAnalysis }>;
-      if (!json.ok) throw new Error(json.error?.message ?? "Analysis failed");
+      if (!json.ok) throw new Error(json.error?.message ?? t("safety.incidents.analyseFailed"));
       refresh();
     } catch (err) {
-      setAnalyzeErr(err instanceof Error ? err.message : "Unknown error");
+      setAnalyzeErr(err instanceof Error ? err.message : t("safety.incidents.analyseFailed"));
     } finally {
       setAnalyzing(false);
     }
@@ -103,7 +107,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
 
   if (!incident) return (
     <div className="container mx-auto px-6 py-12 text-center text-sm text-muted-foreground">
-      Incident not found.
+      {t("safety.incidents.notFound")}
     </div>
   );
 
@@ -111,8 +115,8 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
     <div className="container mx-auto max-w-5xl px-6 py-8">
       {/* Breadcrumb */}
       <div className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Link href="/safety/incidents" className="hover:text-foreground">Incidents</Link>
-        <ChevronRight className="h-3 w-3" />
+        <Link href="/safety/incidents" className="hover:text-foreground">{t("safety.incidents.title")}</Link>
+        <ChevronRight className="h-3 w-3 rtl:rotate-180" />
         <span className="text-foreground">{incident.incidentNumber}</span>
       </div>
 
@@ -120,12 +124,12 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
       <div className="mb-6">
         <div className="flex flex-wrap items-center gap-2">
           <span className={cn("rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase", riskColor(incident.severity))}>
-            {incident.severity}
+            {f.enum("severity", incident.severity)}
           </span>
           <span className="num text-sm text-muted-foreground">{incident.incidentNumber}</span>
           {incident.isAutoEscalated && (
             <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
-              Auto-escalated
+              {t("safety.incidents.autoEscalated")}
             </span>
           )}
         </div>
@@ -142,23 +146,23 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
                 ? "border-risk-medium/40 bg-risk-medium/10 text-risk-medium"
                 : "border-risk-high/40 bg-risk-high/10 text-risk-high",
           )}>
-            {incident.status.replace(/_/g, " ")}
+            {f.enum("status", incident.status)}
           </span>
-          <span className="text-xs">{incident.type.replace(/_/g, " ")}</span>
+          <span className="text-xs">{f.enum("incidentType", incident.type)}</span>
         </div>
       </div>
 
       {/* Key Info */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Info icon={MapPin} label="Site"     value={incident.site?.name ?? "-"} sub={incident.location ?? ""} />
-        <Info icon={User}   label="Reporter" value={incident.reporter?.name ?? "-"} sub={incident.reporter?.role ?? ""} />
-        <Info icon={Clock}  label="Occurred" value={formatDateTime(incident.occurredAt)} sub={timeAgo(incident.occurredAt)} />
-        <Info icon={Siren}  label="Reported" value={formatDateTime(incident.reportedAt)} sub={timeAgo(incident.reportedAt)} />
+        <Info icon={MapPin} label={t("safety.incidents.site")}     value={incident.site?.name ?? "-"} sub={incident.location ?? ""} />
+        <Info icon={User}   label={t("safety.incidents.reporter")} value={incident.reporter?.name ?? "-"} sub={incident.reporter?.role ? t(`roles.${incident.reporter.role}` as MessageKey) : ""} />
+        <Info icon={Clock}  label={t("safety.incidents.occurred")} value={f.dateTime(incident.occurredAt)} sub={f.relative(incident.occurredAt)} />
+        <Info icon={Siren}  label={t("safety.incidents.reported")} value={f.dateTime(incident.reportedAt)} sub={f.relative(incident.reportedAt)} />
       </div>
 
       {/* Description */}
       <Card className="glass mb-6">
-        <CardHeader className="pb-3"><CardTitle className="text-sm">Description</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-sm">{t("safety.incidents.description")}</CardTitle></CardHeader>
         <CardContent>
           <p className="text-sm leading-relaxed whitespace-pre-line">{incident.description}</p>
         </CardContent>
@@ -170,14 +174,13 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Brain className="h-4 w-4 text-primary" />
-              AI Analysis
-              <span className="text-[10px] font-normal text-muted-foreground">Powered by AEGIS</span>
+              {t("safety.incidents.ai")}
             </CardTitle>
             <Button size="sm" variant="outline" onClick={runAnalysis} disabled={analyzing}>
               {analyzing ? (
-                <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Analyzing...</>
+                <><Loader2 className="h-3 w-3 animate-spin" /> {t("safety.incidents.analysing")}</>
               ) : (
-                <><Brain className="mr-1.5 h-3 w-3" /> {ai ? "Re-analyze" : "Analyze"}</>
+                <><Brain className="h-3 w-3" /> {ai ? t("safety.incidents.reanalyse") : t("safety.incidents.analyse")}</>
               )}
             </Button>
           </div>
@@ -190,24 +193,24 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
           )}
           {!ai && !analyzing && (
             <div className="py-4 text-center text-sm text-muted-foreground">
-              No analysis yet. Click &quot;Analyze&quot; to get hazards, root cause, and recommendations.
+              {t("safety.incidents.noAnalysis")}
             </div>
           )}
           {ai && (
             <div className="space-y-4">
               {ai.summary && (
                 <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-primary">Executive Summary</div>
+                  <div className="text-[10px] uppercase tracking-wider text-primary">{t("safety.incidents.summary")}</div>
                   <p className="mt-1 text-sm leading-relaxed">{ai.summary}</p>
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <AIList icon={AlertTriangle} label="Root Cause"          items={ai.rootCause ? [ai.rootCause] : []} tone="critical" />
-                <AIList icon={TrendingUp}    label="Contributing Factors" items={ai.contributingFactors} tone="critical" />
-                <AIList icon={Siren}         label="Immediate Actions"    items={ai.immediateActions}    tone="info" />
-                <AIList icon={Shield}        label="Preventive Actions"   items={ai.preventiveActions}   tone="info" />
-                <AIList icon={CheckCircle2}  label="Recommendations"      items={ai.recommendations}     tone="info" />
-                <AIList icon={TrendingUp}    label="Predictions"          items={ai.predictions}         tone="critical" />
+                <AIList icon={AlertTriangle} label={t("safety.incidents.rootCause")} items={ai.rootCause ? [ai.rootCause] : []} tone="critical" />
+                <AIList icon={TrendingUp}    label={t("safety.incidents.factors")} items={ai.contributingFactors} tone="critical" />
+                <AIList icon={Siren}         label={t("safety.incidents.immediate")} items={ai.immediateActions}    tone="info" />
+                <AIList icon={Shield}        label={t("safety.incidents.preventive")} items={ai.preventiveActions}   tone="info" />
+                <AIList icon={CheckCircle2}  label={t("safety.incidents.recommendations")} items={ai.recommendations}     tone="info" />
+                <AIList icon={TrendingUp}    label={t("safety.incidents.predictions")} items={ai.predictions}         tone="critical" />
               </div>
             </div>
           )}
@@ -221,7 +224,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
       {/* Auto-Generated Actions */}
       {incident.actions && incident.actions.length > 0 && (
         <Card className="glass mb-6">
-          <CardHeader className="pb-3"><CardTitle className="text-sm">Action Items</CardTitle></CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">{t("safety.incidents.actions")}</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-2">
               {incident.actions.map((action) => (
@@ -233,11 +236,11 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
                   <div className="flex-1 min-w-0">
                     <p className="text-xs">{action.description}</p>
                     <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                      <span className="rounded-full border border-border/40 px-1.5 py-0.5">{action.status}</span>
+                      <span className="rounded-full border border-border/40 px-1.5 py-0.5">{f.enum("status", action.status)}</span>
                       {action.isAutoGenerated && (
-                        <span className="rounded-full border border-primary/30 text-primary px-1.5 py-0.5">AI</span>
+                        <span className="rounded-full border border-primary/30 text-primary px-1.5 py-0.5">{t("safety.incidents.aiTag")}</span>
                       )}
-                      {action.dueDate && <span>Due: {formatDateTime(action.dueDate)}</span>}
+                      {action.dueDate && <span>{t("safety.incidents.due", { date: f.dateTime(action.dueDate) })}</span>}
                     </div>
                   </div>
                 </div>

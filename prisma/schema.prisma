@@ -135,6 +135,8 @@ model Permit {
   isAutoApproved   Boolean           @default(false)
   isAutoRevoked    Boolean           @default(false)
   revocationReason String?
+  // Latest AI hazard analysis (JSON from /api/permits/analyze)
+  aiAnalysis       String?
   // Optional: link to the executing contractor
   contractorId     String?
   siteId           String
