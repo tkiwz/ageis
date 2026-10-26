@@ -1,15 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useApi } from "@/hooks/use-api";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  GitBranch, Activity, AlertTriangle, Gauge,
-  Plus, Search, Loader2, ChevronRight, Droplet, Flame, Zap,
+  Activity, AlertTriangle, ChevronRight, Droplet, Droplets, Flame, Fuel, Gauge, GitBranch, Search, X,
+  type LucideIcon,
 } from "lucide-react";
+import { useApi } from "@/hooks/use-api";
+import { useFormat, useI18n } from "@/lib/i18n/client";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { TONE_DOT, TONE_SOFT } from "@/lib/ui/tone";
 import { cn } from "@/lib/utils";
 
 interface Pipeline {
@@ -25,15 +33,6 @@ interface Pipeline {
   pressureMin: number;
   pressureMax: number;
   flowRate: number | null;
-  startSiteId: string | null;
-  endSiteId: string | null;
-  startLat: number;
-  startLng: number;
-  endLat: number;
-  endLng: number;
-  installedAt: string;
-  lastInspection: string | null;
-  notes: string | null;
   _count: {
     pressurePoints: number;
     leakAlerts: number;
@@ -54,288 +53,321 @@ interface PipelineResponse {
   kpis: KPIs;
 }
 
-const PRODUCT_ICONS: Record<string, any> = {
+const STATUSES = ["OPERATIONAL", "MAINTENANCE", "INSPECTION", "SHUTDOWN"] as const;
+const PRODUCTS = ["NATURAL_GAS", "CRUDE_OIL", "LPG", "CONDENSATE"] as const;
+
+const PRODUCT_ICONS: Record<string, LucideIcon> = {
   NATURAL_GAS: Flame,
   CRUDE_OIL: Droplet,
-  LPG: Zap,
-  CONDENSATE: Droplet,
-};
-
-const PRODUCT_COLORS: Record<string, string> = {
-  NATURAL_GAS: "text-orange-600 bg-orange-50",
-  CRUDE_OIL: "text-amber-700 bg-amber-50",
-  LPG: "text-blue-600 bg-blue-50",
-  CONDENSATE: "text-cyan-600 bg-cyan-50",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  OPERATIONAL: "bg-green-100 text-green-700 border-green-200",
-  MAINTENANCE: "bg-yellow-100 text-yellow-700 border-yellow-200",
-  INSPECTION: "bg-blue-100 text-blue-700 border-blue-200",
-  SHUTDOWN: "bg-red-100 text-red-700 border-red-200",
+  LPG: Fuel,
+  CONDENSATE: Droplets,
 };
 
 export default function PipelinesPage() {
-  const { data, loading } = useApi<PipelineResponse>("/api/pipelines");
+  const { t, isAr } = useI18n();
+  const f = useFormat();
+  const { data, error, loading, refresh } = useApi<PipelineResponse>("/api/pipelines");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [productFilter, setProductFilter] = useState<string>("ALL");
+  const [status, setStatus] = useState("ALL");
+  const [product, setProduct] = useState("ALL");
+  const [leaksOnly, setLeaksOnly] = useState(false);
 
-  const pipelines = data?.pipelines ?? [];
-  const kpis = data?.kpis;
+  const pipelines = useMemo(() => data?.pipelines ?? [], [data]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return pipelines.filter((p) => {
+      if (status !== "ALL" && p.status !== status) return false;
+      if (product !== "ALL" && p.productType !== product) return false;
+      if (leaksOnly && p._count.leakAlerts === 0) return false;
+      if (!q) return true;
+      return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || (p.nameAr ?? "").toLowerCase().includes(q);
+    });
+  }, [pipelines, search, status, product, leaksOnly]);
 
-  const filtered = pipelines.filter((p) => {
-    if (statusFilter !== "ALL" && p.status !== statusFilter) return false;
-    if (productFilter !== "ALL" && p.productType !== productFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (
-        p.code.toLowerCase().includes(q) ||
-        p.name.toLowerCase().includes(q) ||
-        (p.nameAr ?? "").toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  const hasFilters = search.trim() !== "" || status !== "ALL" || product !== "ALL" || leaksOnly;
+  const clearFilters = () => {
+    setSearch("");
+    setStatus("ALL");
+    setProduct("ALL");
+    setLeaksOnly(false);
+  };
+  const firstLoad = loading && !data;
 
   return (
-    <div className="container mx-auto max-w-7xl px-6 py-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Pipeline Network</h1>
-          <p className="text-muted-foreground mt-1">
-            Real-time monitoring of pipeline infrastructure across OQ assets
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/operations/pipelines/leaks">
-            <Button variant="outline" className="gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-600" />
-              Leak Alerts
-              {kpis && kpis.activeLeaks > 0 && (
-                <span className="ml-1 rounded-full bg-red-600 text-white text-xs px-2 py-0.5">
-                  {kpis.activeLeaks}
-                </span>
-              )}
-            </Button>
-          </Link>
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            Add Pipeline
-          </Button>
-        </div>
-      </div>
+    <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8">
+      <PageHeader title={t("assets.pipelines.title")} description={t("assets.pipelines.description")} />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPICard
-          icon={GitBranch}
-          label="Total Pipelines"
-          value={kpis?.total ?? 0}
-          subtitle={`${kpis?.totalLength?.toFixed(0) ?? 0} km network`}
-          color="text-blue-600 bg-blue-50"
-        />
-        <KPICard
-          icon={Activity}
-          label="Operational"
-          value={kpis?.operational ?? 0}
-          subtitle="All systems normal"
-          color="text-green-600 bg-green-50"
-        />
-        <KPICard
-          icon={AlertTriangle}
-          label="Active Leaks"
-          value={kpis?.activeLeaks ?? 0}
-          subtitle="Requires attention"
-          color="text-red-600 bg-red-50"
-          highlight={kpis ? kpis.activeLeaks > 0 : false}
-        />
-        <KPICard
-          icon={Gauge}
-          label="Pressure Alerts"
-          value={(kpis?.criticalPoints ?? 0) + (kpis?.warningPoints ?? 0)}
-          subtitle={`${kpis?.criticalPoints ?? 0} critical, ${kpis?.warningPoints ?? 0} warning`}
-          color="text-orange-600 bg-orange-50"
-        />
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search pipeline by code, name..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 border rounded-md text-sm bg-background"
-              >
-                <option value="ALL">All Status</option>
-                <option value="OPERATIONAL">Operational</option>
-                <option value="MAINTENANCE">Maintenance</option>
-                <option value="INSPECTION">Inspection</option>
-                <option value="SHUTDOWN">Shutdown</option>
-              </select>
-              <select
-                value={productFilter}
-                onChange={(e) => setProductFilter(e.target.value)}
-                className="px-3 py-2 border rounded-md text-sm bg-background"
-              >
-                <option value="ALL">All Products</option>
-                <option value="NATURAL_GAS">Natural Gas</option>
-                <option value="CRUDE_OIL">Crude Oil</option>
-                <option value="LPG">LPG</option>
-                <option value="CONDENSATE">Condensate</option>
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pipelines list */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-40" />
-            <p>No pipelines match your filters</p>
-          </CardContent>
-        </Card>
+      {error && !data ? (
+        <ErrorState onRetry={refresh} />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filtered.map((pipeline) => (
-            <PipelineCard key={pipeline.id} pipeline={pipeline} />
-          ))}
-        </div>
+        <>
+          <KpiRow
+            kpis={data?.kpis ?? null}
+            loading={firstLoad}
+            leaksOnly={leaksOnly}
+            onToggleLeaks={() => setLeaksOnly((v) => !v)}
+          />
+
+          <Card className="mt-6 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t("assets.pipelines.filters.search")}
+                  aria-label={t("assets.pipelines.filters.search")}
+                  className="ps-9"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <NativeSelect
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  aria-label={t("assets.pipelines.filters.status")}
+                  className="min-w-[11rem]"
+                >
+                  <option value="ALL">{t("assets.pipelines.filters.allStatuses")}</option>
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {f.enum("status", s)}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <NativeSelect
+                  value={product}
+                  onChange={(e) => setProduct(e.target.value)}
+                  aria-label={t("assets.pipelines.filters.product")}
+                  className="min-w-[11rem]"
+                >
+                  <option value="ALL">{t("assets.pipelines.filters.allProducts")}</option>
+                  {PRODUCTS.map((p) => (
+                    <option key={p} value={p}>
+                      {f.enum("productType", p)}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <Button variant={leaksOnly ? "secondary" : "outline"} aria-pressed={leaksOnly} onClick={() => setLeaksOnly((v) => !v)}>
+                  <AlertTriangle strokeWidth={1.75} />
+                  {t("assets.pipelines.filters.leaksOnly")}
+                </Button>
+                {hasFilters && (
+                  <Button variant="ghost" onClick={clearFilters}>
+                    <X strokeWidth={1.75} />
+                    {t("assets.pipelines.filters.clear")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <div className="mt-6">
+            {firstLoad ? (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-[188px] rounded-xl" />
+                ))}
+              </div>
+            ) : pipelines.length === 0 ? (
+              <Card>
+                <EmptyState icon={GitBranch} title={t("assets.pipelines.empty.title")} description={t("assets.pipelines.empty.body")} />
+              </Card>
+            ) : filtered.length === 0 ? (
+              <Card>
+                <EmptyState
+                  icon={Search}
+                  title={t("assets.pipelines.noMatch.title")}
+                  description={t("assets.pipelines.noMatch.body")}
+                  action={
+                    <Button variant="outline" onClick={clearFilters}>
+                      {t("assets.pipelines.filters.clear")}
+                    </Button>
+                  }
+                />
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {filtered.map((p) => (
+                  <PipelineCard key={p.id} pipeline={p} name={isAr ? p.nameAr || p.name : p.name} />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-// ============ KPI Card ============
-function KPICard({
-  icon: Icon, label, value, subtitle, color, highlight = false,
+/* ── KPIs ── */
+function KpiRow({
+  kpis, loading, leaksOnly, onToggleLeaks,
 }: {
-  icon: any;
-  label: string;
-  value: number;
-  subtitle: string;
-  color: string;
-  highlight?: boolean;
+  kpis: KPIs | null;
+  loading: boolean;
+  leaksOnly: boolean;
+  onToggleLeaks: () => void;
 }) {
+  const { t } = useI18n();
+  const f = useFormat();
+
+  if (loading || !kpis) {
+    return (
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-[104px] rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  const pressureAlerts = kpis.criticalPoints + kpis.warningPoints;
   return (
-    <Card className={cn(highlight && "ring-2 ring-red-400")}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-3xl font-bold mt-1">{value}</p>
-            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-          </div>
-          <div className={cn("p-2 rounded-lg", color)}>
-            <Icon className="h-5 w-5" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <KpiTile
+        icon={GitBranch}
+        label={t("assets.pipelines.kpi.total")}
+        value={f.number(kpis.total)}
+        hint={t("assets.pipelines.kpi.totalHint", { length: f.number(kpis.totalLength, { maximumFractionDigits: 0 }) })}
+      />
+      <KpiTile
+        icon={Activity}
+        label={t("assets.pipelines.kpi.operational")}
+        value={f.number(kpis.operational)}
+        hint={t("assets.pipelines.kpi.operationalHint", { total: f.number(kpis.total) })}
+      />
+      <KpiTile
+        icon={AlertTriangle}
+        label={t("assets.pipelines.kpi.activeLeaks")}
+        value={f.number(kpis.activeLeaks)}
+        hint={
+          kpis.activeLeaks === 0
+            ? t("assets.pipelines.kpi.activeLeaksNone")
+            : leaksOnly
+              ? t("assets.pipelines.kpi.activeLeaksFiltered")
+              : t("assets.pipelines.kpi.activeLeaksHint")
+        }
+        tone={kpis.activeLeaks > 0 ? "danger" : undefined}
+        pressed={kpis.activeLeaks > 0 ? leaksOnly : undefined}
+        onClick={kpis.activeLeaks > 0 ? onToggleLeaks : undefined}
+      />
+      <KpiTile
+        icon={Gauge}
+        label={t("assets.pipelines.kpi.pressureAlerts")}
+        value={f.number(pressureAlerts)}
+        hint={t("assets.pipelines.kpi.pressureAlertsHint", {
+          critical: f.number(kpis.criticalPoints),
+          warning: f.number(kpis.warningPoints),
+        })}
+        tone={kpis.criticalPoints > 0 ? "danger" : kpis.warningPoints > 0 ? "warning" : undefined}
+      />
+    </div>
   );
 }
 
-// ============ Pipeline Card ============
-function PipelineCard({ pipeline }: { pipeline: Pipeline }) {
-  const ProductIcon = PRODUCT_ICONS[pipeline.productType] || Droplet;
-  const productColor = PRODUCT_COLORS[pipeline.productType] || "text-gray-600 bg-gray-50";
-  const statusColor = STATUS_COLORS[pipeline.status] || STATUS_COLORS.OPERATIONAL;
-  const hasLeaks = pipeline._count.leakAlerts > 0;
+function KpiTile({
+  icon: Icon, label, value, hint, tone, pressed, onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "danger" | "warning";
+  pressed?: boolean;
+  onClick?: () => void;
+}) {
+  const body = (
+    <Card
+      className={cn(
+        "h-full p-4 text-start transition-colors",
+        onClick && "group-hover:bg-accent/40",
+        pressed && "border-danger/40 bg-danger/5",
+      )}
+    >
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+        <span className="truncate">{label}</span>
+      </div>
+      <div className={cn("num mt-2 text-[28px] font-semibold leading-none", tone === "danger" && "text-danger", tone === "warning" && "text-warning")}>
+        {value}
+      </div>
+      <p className="mt-2 truncate text-xs text-muted-foreground">{hint}</p>
+    </Card>
+  );
+  if (!onClick) return body;
+  return (
+    <button type="button" onClick={onClick} aria-pressed={pressed} className="group block w-full rounded-xl">
+      {body}
+    </button>
+  );
+}
+
+/* ── Pipeline card ── */
+function PipelineCard({ pipeline: p, name }: { pipeline: Pipeline; name: string }) {
+  const { t } = useI18n();
+  const f = useFormat();
+  const ProductIcon = PRODUCT_ICONS[p.productType] ?? Droplet;
+  const leaks = p._count.leakAlerts;
+  const one = { maximumFractionDigits: 1 };
 
   return (
-    <Link href={`/operations/pipelines/${pipeline.id}`}>
-      <Card className={cn(
-        "hover:shadow-lg transition-all cursor-pointer h-full",
-        hasLeaks && "ring-2 ring-red-300"
-      )}>
-        <CardContent className="p-5">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="flex items-start gap-3 flex-1 min-w-0">
-              <div className={cn("p-2 rounded-lg shrink-0", productColor)}>
-                <ProductIcon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
-                    {pipeline.code}
-                  </span>
-                  <span className={cn("text-xs px-2 py-0.5 rounded border", statusColor)}>
-                    {pipeline.status}
-                  </span>
-                  {hasLeaks && (
-                    <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 animate-pulse">
-                      {pipeline._count.leakAlerts} LEAK
-                    </span>
-                  )}
-                </div>
-                <h3 className="font-semibold mt-2 truncate">{pipeline.name}</h3>
-                {pipeline.nameAr && (
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate" dir="rtl">
-                    {pipeline.nameAr}
-                  </p>
-                )}
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+    <Link href={`/operations/pipelines/${p.id}`} className="group block rounded-xl">
+      <Card className={cn("h-full p-5 transition-colors group-hover:bg-accent/40", leaks > 0 && "border-s-[3px] border-s-danger")}>
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <ProductIcon className="h-[18px] w-[18px]" strokeWidth={1.75} />
           </div>
-
-          {/* Stats grid */}
-          <div className="grid grid-cols-4 gap-3 pt-3 border-t">
-            <StatItem label="Length" value={`${pipeline.length}`} unit="km" />
-            <StatItem label="Diameter" value={`${pipeline.diameter}`} unit='"' />
-            <StatItem label="Pressure" value={`${pipeline.pressureMin}-${pipeline.pressureMax}`} unit="bar" />
-            <StatItem
-              label="Points"
-              value={`${pipeline._count.pressurePoints}`}
-              unit="sensors"
-            />
-          </div>
-
-          {/* Product type badge */}
-          <div className="mt-3 flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              Product: <span className="font-medium text-foreground">
-                {pipeline.productType.replace("_", " ")}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span dir="ltr" className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                {p.code}
               </span>
-            </span>
-            <span className="text-muted-foreground">
-              {pipeline.material}
-            </span>
+              <StatusBadge value={p.status} />
+              {leaks > 0 && (
+                <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", TONE_SOFT.danger)}>
+                  <span className={cn("h-1.5 w-1.5 rounded-full", TONE_DOT.danger)} aria-hidden />
+                  {t("assets.pipelines.card.activeLeaks", { n: f.number(leaks) })}
+                </span>
+              )}
+            </div>
+            <h3 className="mt-2 truncate font-semibold">{name}</h3>
           </div>
-        </CardContent>
+          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground rtl:rotate-180" strokeWidth={1.75} />
+        </div>
+
+        <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 sm:grid-cols-4">
+          <Stat label={t("assets.pipelines.card.length")} value={f.number(p.length, one)} unit={t("assets.units.km")} />
+          <Stat label={t("assets.pipelines.card.diameter")} value={f.number(p.diameter, one)} unit={t("assets.units.inch")} />
+          <Stat
+            label={t("assets.pipelines.card.pressure")}
+            value={`${f.number(p.pressureMin, one)}–${f.number(p.pressureMax, one)}`}
+            unit={t("assets.units.bar")}
+          />
+          <Stat label={t("assets.pipelines.card.sensors")} value={f.number(p._count.pressurePoints)} />
+        </dl>
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            {t("assets.pipelines.card.product")}: <span className="font-medium text-foreground">{f.enum("productType", p.productType)}</span>
+          </span>
+          <span>
+            {t("assets.pipelines.card.material")}: <span className="text-foreground/80">{f.enum("material", p.material)}</span>
+          </span>
+        </div>
       </Card>
     </Link>
   );
 }
 
-// ============ Stat Item ============
-function StatItem({ label, value, unit }: { label: string; value: string; unit: string }) {
+function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold">
-        {value}
-        <span className="text-xs text-muted-foreground ml-1">{unit}</span>
-      </p>
+    <div className="min-w-0">
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 text-sm font-semibold">
+        <span dir="ltr" className="num">{value}</span>
+        {unit && <span className="ms-1 text-xs font-normal text-muted-foreground">{unit}</span>}
+      </dd>
     </div>
   );
 }

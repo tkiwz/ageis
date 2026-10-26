@@ -1,21 +1,30 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
-  GitBranch, ArrowLeft, AlertTriangle, Gauge, Droplet, Flame, Zap,
-  Activity, Brain, CheckCircle2, Loader2,
-  TrendingDown, MapPin, Shield, Sparkles,
+  Activity, AlertTriangle, ArrowLeft, Box, BrainCircuit, CheckCircle2, GitBranch, Loader2, MapPin, RotateCw,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { ShareInsightButton } from "@/components/knowledge/share-insight-button";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, Legend,
+  CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { useFormat, useI18n } from "@/lib/i18n/client";
+import { useThemeColors } from "@/lib/ui/theme-colors";
+import { TONE_DOT, TONE_EDGE, TONE_SOFT, TONE_TEXT, toneFor } from "@/lib/ui/tone";
+import { ROLE_GROUPS } from "@/lib/rbac";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { ShareInsightButton } from "@/components/knowledge/share-insight-button";
+import { cn } from "@/lib/utils";
+import type { ApiResponse } from "@/types";
+import type { Role } from "@/lib/constants";
 
 interface PressurePoint {
   id: string;
@@ -39,8 +48,6 @@ interface LeakAlert {
   estimatedKmFromStart: number;
   confidence: number;
   pressureDrop: number;
-  aiSummary: string | null;
-  aiAnalysis: string | null;
   status: string;
   detectedAt: string;
 }
@@ -58,13 +65,8 @@ interface Pipeline {
   pressureMin: number;
   pressureMax: number;
   flowRate: number | null;
-  startLat: number;
-  startLng: number;
-  endLat: number;
-  endLng: number;
   installedAt: string;
   lastInspection: string | null;
-  notes: string | null;
   pressurePoints: PressurePoint[];
   leakAlerts: LeakAlert[];
 }
@@ -82,535 +84,692 @@ interface ReadingSeries {
   }[];
 }
 
-// AEGIS Unified Color Palette
-const COLORS = {
-  primary: "#00D4D8",      // cyan - main brand
-  primaryDark: "#00A8AB",
-  accent: "#F58320",       // orange - highlights
-  navy: "#0B2B5C",
-  navyLight: "#1B3D7C",
-  success: "#10B981",
-  warning: "#F59E0B",
-  danger: "#EF4444",
-  muted: "#6B7280",
-};
+interface AnalysisResult {
+  analysis: {
+    leakDetected: boolean;
+    confidence?: number | null;
+    severity?: string | null;
+    estimatedKmFromStart?: number | null;
+    estimatedLat?: number | null;
+    estimatedLng?: number | null;
+    pressureDrop?: number | null;
+    summary?: string | null;
+    summaryAr?: string | null;
+    rootCause?: string | null;
+    predictions?: string[] | null;
+    immediateActions?: string[] | null;
+  };
+  leakAlert: { id: string; alertNumber: string } | null;
+  linked: {
+    incident: { id: string; number: string } | null;
+    observation: { id: string; number: string } | null;
+    emergency: { id: string; title: string } | null;
+  } | null;
+  meta: { durationMs: number };
+}
 
-const PRODUCT_ICONS: Record<string, any> = {
-  NATURAL_GAS: Flame,
-  CRUDE_OIL: Droplet,
-  LPG: Zap,
-};
+type LoadState = "loading" | "ready" | "notFound" | "error";
+type AnalysisError = "failed" | "forbidden" | "limited";
 
-const SEVERITY_STYLES: Record<string, string> = {
-  LOW: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
-  MEDIUM: "bg-amber-500/10 text-amber-400 border-amber-500/30",
-  HIGH: "bg-orange-500/10 text-orange-400 border-orange-500/30",
-  CRITICAL: "bg-red-500/10 text-red-400 border-red-500/30",
-};
-
-const CHART_COLORS = ["#00D4D8", "#F58320", "#10B981", "#F59E0B", "#A78BFA"];
+const ONE_DECIMAL: Intl.NumberFormatOptions = { maximumFractionDigits: 1 };
 
 export default function PipelineDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const id = params.id as string;
+  const { t, isAr } = useI18n();
+  const id = useParams<{ id: string }>().id;
+  const role = useSession().data?.user?.role as Role | undefined;
+  const canAnalyze = !!role && ROLE_GROUPS.SUPERVISE.includes(role);
 
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
-  const [series, setSeries] = useState<ReadingSeries[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [lastAnalysis, setLastAnalysis] = useState<any>(null);
+  const [series, setSeries] = useState<ReadingSeries[] | null>(null);
+  const [state, setState] = useState<LoadState>("loading");
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
 
-  const refreshData = useCallback(async () => {
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [analysisError, setAnalysisError] = useState<AnalysisError | null>(null);
+
+  const load = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const [pipelineRes, readingsRes] = await Promise.all([
-        fetch(`/api/pipelines/${id}`).then((r) => r.json()),
-        fetch(`/api/pipelines/${id}/readings?hours=2`).then((r) => r.json()),
+      const [pRes, rRes] = await Promise.all([
+        fetch(`/api/pipelines/${id}`),
+        fetch(`/api/pipelines/${id}/readings?hours=2`),
       ]);
-      if (pipelineRes.ok) setPipeline(pipelineRes.data.pipeline);
-      if (readingsRes.ok) setSeries(readingsRes.data.series);
-    } catch (err) {
-      console.error("Refresh failed:", err);
+      if (pRes.status === 404) {
+        setState("notFound");
+        return;
+      }
+      const pJson = (await pRes.json()) as ApiResponse<{ pipeline: Pipeline }>;
+      if (!pJson.ok || !pJson.data) throw new Error("pipeline");
+      const rJson = await readJson<{ series: ReadingSeries[] }>(rRes);
+      setPipeline(pJson.data.pipeline);
+      if (rJson?.ok && rJson.data) setSeries(rJson.data.series);
+      setState("ready");
+      setRefreshFailed(false);
+      setUpdatedAt(Date.now());
+    } catch {
+      setRefreshFailed(true);
+      setState((s) => (s === "ready" ? s : "error"));
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   }, [id]);
 
   useEffect(() => {
-    refreshData();
-  }, [refreshData]);
+    load();
+  }, [load]);
 
-
-  const handleAnalyze = async () => {
+  const runAnalysis = useCallback(async () => {
     setAnalyzing(true);
-    setLastAnalysis(null);
-
+    setAnalysisError(null);
+    setAnalysis(null);
     try {
       const res = await fetch(`/api/pipelines/${id}/analyze`, { method: "POST" });
-      const data = await res.json();
-      if (data.ok) {
-        setLastAnalysis(data.data);
-        await refreshData();
+      const json = await readJson<AnalysisResult>(res);
+      if (res.ok && json?.ok && json.data) {
+        setAnalysis(json.data);
+        await load();
       } else {
-        alert("Analysis failed: " + (data.error?.message || "Unknown error"));
+        setAnalysisError(res.status === 403 ? "forbidden" : res.status === 429 ? "limited" : "failed");
       }
-    } catch (err: any) {
-      alert("Analysis error: " + err.message);
+    } catch {
+      setAnalysisError("failed");
     } finally {
       setAnalyzing(false);
     }
-  };
+  }, [id, load]);
 
-  if (loading) {
+  if (state === "loading") return <DetailSkeleton />;
+
+  if (state === "notFound" || (state === "error" && !pipeline)) {
     return (
-      <div className="container mx-auto max-w-7xl px-6 py-20 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" style={{ color: COLORS.primary }} />
+      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8">
+        <BackLink />
+        {state === "error" ? (
+          <ErrorState onRetry={load} />
+        ) : (
+          <Card>
+            <EmptyState
+              icon={GitBranch}
+              title={t("assets.pipeline.notFound.title")}
+              description={t("assets.pipeline.notFound.body")}
+              action={
+                <Button asChild variant="outline">
+                  <Link href="/operations/pipelines">{t("assets.pipeline.notFound.back")}</Link>
+                </Button>
+              }
+            />
+          </Card>
+        )}
       </div>
     );
   }
 
-  if (!pipeline) {
-    return (
-      <div className="container mx-auto max-w-7xl px-6 py-20 text-center">
-        <p className="text-muted-foreground">Pipeline not found</p>
-        <Link href="/operations/pipelines">
-          <Button variant="outline" className="mt-4">Back to Pipelines</Button>
-        </Link>
-      </div>
-    );
-  }
+  if (!pipeline) return <DetailSkeleton />;
 
-  const ProductIcon = PRODUCT_ICONS[pipeline.productType] || Droplet;
-  const hasActiveLeaks = pipeline.leakAlerts.some((l) => l.status === "ACTIVE");
-  const chartData = buildChartData(series);
+  const name = isAr ? pipeline.nameAr || pipeline.name : pipeline.name;
+  const hasActiveLeak = pipeline.leakAlerts.some((l) => l.status === "ACTIVE");
 
   return (
-    <div className="container mx-auto max-w-7xl px-6 py-6 space-y-5">
-      {/* Top navigation */}
-      <div className="flex items-center justify-between">
-        <Link href="/operations/pipelines">
-          <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Pipelines
-          </Button>
-        </Link>
-        <Link href={`/operations/pipelines/${id}/3d`}>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300"
-          >
-            <Sparkles className="h-4 w-4" />
-            View in 3D
-          </Button>
-        </Link>
-      </div>
+    <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8">
+      <BackLink />
 
-      {/* Pipeline Header Card */}
-      <Card className={cn(
-        "border-border/50 bg-card/50 backdrop-blur",
-        hasActiveLeaks && "border-red-500/40 shadow-lg shadow-red-500/10"
-      )}>
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex items-start gap-4 flex-1 min-w-0">
-              <div
-                className="p-3 rounded-lg shrink-0"
-                style={{ backgroundColor: `${COLORS.primary}15`, color: COLORS.primary }}
-              >
-                <ProductIcon className="h-8 w-8" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <span className="font-mono text-sm bg-muted/50 px-2 py-1 rounded text-foreground">
-                    {pipeline.code}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-xs px-2 py-1 rounded-md border font-medium",
-                      pipeline.status === "OPERATIONAL"
-                        ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
-                        : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                    )}
-                  >
-                    {pipeline.status}
-                  </span>
-                  {hasActiveLeaks && (
-                    <span className="text-xs px-2 py-1 rounded-md bg-red-500/10 text-red-400 border border-red-500/30 animate-pulse font-medium">
-                      🚨 ACTIVE LEAK
-                    </span>
-                  )}
-                </div>
-                <h1 className="text-2xl font-bold">{pipeline.name}</h1>
-                {pipeline.nameAr && (
-                  <p className="text-muted-foreground mt-1" dir="rtl">{pipeline.nameAr}</p>
-                )}
-              </div>
-            </div>
-            <ShareInsightButton contextType="pipeline" contextId={pipeline.id} />
-          </div>
-
-          {/* Specs row */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 pt-6 border-t border-border/40">
-            <Spec label="Length" value={`${pipeline.length}`} unit="km" />
-            <Spec label="Diameter" value={`${pipeline.diameter}`} unit='"' />
-            <Spec label="Material" value={pipeline.material} />
-            <Spec label="Product" value={pipeline.productType.replace("_", " ")} />
-            <Spec label="Pressure Range" value={`${pipeline.pressureMin}-${pipeline.pressureMax}`} unit="bar" />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ⭐ AI Demo Controls ⭐ */}
-      <Card className="border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 via-card/50 to-card/30 backdrop-blur">
-        <CardContent className="p-6">
-          <div className="flex items-start gap-3 mb-5">
-            <div
-              className="p-2.5 rounded-lg shrink-0"
-              style={{ backgroundColor: `${COLORS.primary}20`, color: COLORS.primary }}
-            >
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <h2 className="text-lg font-bold">AI Live  Controls</h2>
-                <span className="text-xs text-muted-foreground"></span>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Run AEGIS AI analysis on the latest pressure readings
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-5">
-            {/* Analyze */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Brain className="h-4 w-4" style={{ color: COLORS.primary }} />
-                <span className="text-sm font-semibold"> Analyze with AEGIS AI</span>
-              </div>
-              <Button
-                onClick={handleAnalyze}
-                disabled={analyzing}
-                className="w-full text-white border-0 shadow-md transition-all hover:shadow-cyan-500/20"
-                style={{
-                  background: analyzing
-                    ? COLORS.primaryDark
-                    : `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryDark} 100%)`,
-                }}
-                size="sm"
-              >
-                {analyzing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    AEGIS is analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Brain className="h-4 w-4 mr-2" />
-                    Run AI Analysis
-                  </>
-                )}
-              </Button>
-              {lastAnalysis && (
-                <div className="text-xs bg-background/50 border border-border/50 px-3 py-2.5 rounded-md">
-                  {lastAnalysis.analysis.leakDetected ? (
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-                      <div>
-                        <strong className="text-red-400">LEAK DETECTED</strong>
-                        <span className="text-foreground/80"> with {(lastAnalysis.analysis.confidence * 100).toFixed(0)}% confidence</span>
-                        <span className="text-foreground/60"> — Alert {lastAnalysis.leakAlert?.alertNumber} created</span>
-                        <div className="text-muted-foreground mt-1">
-                          Response time: {lastAnalysis.meta.durationMs}ms
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
-                      <div className="text-foreground/80">
-                        <strong className="text-cyan-400">No leak detected</strong> — pipeline is healthy
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* AI Analysis Result */}
-      {lastAnalysis && lastAnalysis.analysis.leakDetected && (
-        <Card className="border-red-500/30 bg-gradient-to-br from-red-500/5 via-card/50 to-card/30 backdrop-blur">
-          <CardContent className="p-6">
-            <div className="flex items-start gap-3 mb-5">
-              <div className="p-2.5 rounded-lg bg-red-500/15 text-red-400 shrink-0">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-red-400">
-                  AEGIS AI: Leak Detected
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  <span className="font-mono">{lastAnalysis.leakAlert?.alertNumber}</span>
-                  {" · "}
-                  Confidence: <strong className="text-foreground">{(lastAnalysis.analysis.confidence * 100).toFixed(0)}%</strong>
-                </p>
-              </div>
-              <span className={cn(
-                "text-xs px-2.5 py-1 rounded-md border font-bold",
-                SEVERITY_STYLES[lastAnalysis.analysis.severity]
-              )}>
-                {lastAnalysis.analysis.severity}
+      <PageHeader
+        title={name}
+        description={
+          <span className="flex flex-wrap items-center gap-2">
+            <span dir="ltr" className="font-mono">{pipeline.code}</span>
+            <StatusBadge value={pipeline.status} />
+            {hasActiveLeak && (
+              <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", TONE_SOFT.danger)}>
+                <span className={cn("h-1.5 w-1.5 rounded-full animate-attention", TONE_DOT.danger)} aria-hidden />
+                {t("assets.pipeline.activeLeak")}
               </span>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {/* Summary */}
-              <div className="bg-background/40 border border-border/40 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <Activity className="h-4 w-4 text-cyan-400" />
-                  <h4 className="font-semibold text-sm">Summary</h4>
-                </div>
-                <p className="text-sm text-foreground/90 leading-relaxed">{lastAnalysis.analysis.summary}</p>
-                {lastAnalysis.analysis.summaryAr && (
-                  <p className="text-sm mt-2.5 text-muted-foreground leading-relaxed border-t border-border/30 pt-2.5" dir="rtl">
-                    {lastAnalysis.analysis.summaryAr}
-                  </p>
-                )}
-              </div>
-
-              {/* Location */}
-              <div className="bg-background/40 border border-border/40 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <MapPin className="h-4 w-4 text-orange-400" />
-                  <h4 className="font-semibold text-sm">Estimated Location</h4>
-                </div>
-                <p className="text-sm">
-                  <strong className="text-foreground text-base">{lastAnalysis.analysis.estimatedKmFromStart} km</strong>
-                  <span className="text-muted-foreground"> from pipeline start</span>
-                </p>
-                <p className="text-xs text-muted-foreground mt-1 font-mono">
-                  {lastAnalysis.analysis.estimatedLat?.toFixed(4)}, {lastAnalysis.analysis.estimatedLng?.toFixed(4)}
-                </p>
-                <p className="text-xs mt-2.5 pt-2.5 border-t border-border/30">
-                  <span className="text-muted-foreground">Pressure drop: </span>
-                  <strong className="text-red-400">{lastAnalysis.analysis.pressureDrop} bar</strong>
-                </p>
-              </div>
-
-              {/* Immediate Actions */}
-              <div className="bg-background/40 border border-red-500/20 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <Zap className="h-4 w-4 text-red-400" />
-                  <h4 className="font-semibold text-sm text-red-400">Immediate Actions</h4>
-                </div>
-                <ul className="text-sm space-y-1.5">
-                  {lastAnalysis.analysis.immediateActions?.map((action: string, i: number) => (
-                    <li key={i} className="flex gap-2 text-foreground/85">
-                      <span className="text-red-400 shrink-0">→</span>
-                      <span className="leading-relaxed">{action}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Predictions */}
-              <div className="bg-background/40 border border-cyan-500/20 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <Brain className="h-4 w-4 text-cyan-400" />
-                  <h4 className="font-semibold text-sm text-cyan-400">Predictions</h4>
-                </div>
-                <ul className="text-sm space-y-1.5">
-                  {lastAnalysis.analysis.predictions?.map((p: string, i: number) => (
-                    <li key={i} className="flex gap-2 text-foreground/85">
-                      <span className="text-cyan-400 shrink-0">◆</span>
-                      <span className="leading-relaxed">{p}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            {/* Root Cause */}
-            {lastAnalysis.analysis.rootCause && (
-              <div className="mt-3 bg-background/40 border border-border/40 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <Shield className="h-4 w-4 text-orange-400" />
-                  <h4 className="font-semibold text-sm">Root Cause Analysis</h4>
-                </div>
-                <p className="text-sm text-foreground/85 leading-relaxed">{lastAnalysis.analysis.rootCause}</p>
-              </div>
             )}
-          </CardContent>
-        </Card>
+          </span>
+        }
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href={`/operations/pipelines/${pipeline.id}/3d`}>
+                <Box strokeWidth={1.75} />
+                {t("assets.pipeline.view3d")}
+              </Link>
+            </Button>
+            <ShareInsightButton contextType="pipeline" contextId={pipeline.id} />
+            {canAnalyze && (
+              <Button onClick={runAnalysis} disabled={analyzing}>
+                {analyzing ? <Loader2 className="animate-spin" strokeWidth={1.75} /> : <BrainCircuit strokeWidth={1.75} />}
+                {analyzing ? t("assets.pipeline.analysis.running") : t("assets.pipeline.analysis.run")}
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {refreshFailed && <ErrorState className="mb-6" onRetry={load} />}
+      {analysisError && (
+        <ErrorState className="mb-6" message={t(`assets.pipeline.analysis.${analysisError}`)} onRetry={analysisError === "failed" ? runAnalysis : undefined} />
       )}
 
-      {/* Pressure Chart */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Gauge className="h-5 w-5 text-cyan-400" />
-              <h2 className="text-lg font-bold">Live Pressure Readings</h2>
-              <span className="text-xs text-muted-foreground">Last 2 hours</span>
-            </div>
-            <Button variant="ghost" size="sm" onClick={refreshData} className="gap-1 text-muted-foreground">
-              <Activity className="h-3.5 w-3.5" />
-              Refresh
-            </Button>
-          </div>
+      <div className="space-y-6">
+        {analyzing && <AnalysisSkeleton />}
+        {analysis && <AnalysisPanel result={analysis} />}
 
-          {chartData.length === 0 ? (
-            <p className="text-center text-muted-foreground py-12">No recent readings</p>
-          ) : (
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fontSize: 10, fill: "#94A3B8" }}
-                    tickFormatter={(t) => new Date(t).toLocaleTimeString("en-GB", {
-                      hour: "2-digit", minute: "2-digit"
-                    })}
-                    stroke="rgba(255,255,255,0.2)"
-                  />
-                  <YAxis
-                    domain={[pipeline.pressureMin - 10, pipeline.pressureMax + 5]}
-                    tick={{ fontSize: 10, fill: "#94A3B8" }}
-                    label={{ value: "Pressure (bar)", angle: -90, position: "insideLeft", fill: "#94A3B8", fontSize: 11 }}
-                    stroke="rgba(255,255,255,0.2)"
-                  />
-                  <Tooltip
-                    labelFormatter={(t) => new Date(t).toLocaleString("en-GB")}
-                    contentStyle={{
-                      backgroundColor: "rgba(11, 43, 92, 0.95)",
-                      border: "1px solid rgba(0, 212, 216, 0.3)",
-                      borderRadius: "6px",
-                      fontSize: 11,
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <ReferenceLine
-                    y={pipeline.pressureMin}
-                    stroke="#EF4444"
-                    strokeDasharray="3 3"
-                    label={{ value: "Min Safe", fontSize: 10, position: "right", fill: "#EF4444" }}
-                  />
-                  <ReferenceLine
-                    y={pipeline.pressureMax}
-                    stroke="#EF4444"
-                    strokeDasharray="3 3"
-                    label={{ value: "Max Safe", fontSize: 10, position: "right", fill: "#EF4444" }}
-                  />
-                  {series.map((s, i) => (
-                    <Line
-                      key={s.pointId}
-                      type="monotone"
-                      dataKey={s.code}
-                      stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </CardContent>
+        <SpecsCard pipeline={pipeline} />
+
+        <PressureChartCard
+          series={series}
+          min={pipeline.pressureMin}
+          max={pipeline.pressureMax}
+          refreshing={refreshing}
+          updatedAt={updatedAt}
+          onRefresh={load}
+        />
+
+        <div className={cn("grid gap-6", pipeline.leakAlerts.length > 0 && "xl:grid-cols-[minmax(0,1fr)_340px]")}>
+          <PointsCard points={pipeline.pressurePoints} />
+          {pipeline.leakAlerts.length > 0 && <LeakAlertsCard alerts={pipeline.leakAlerts} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Back link ── */
+function BackLink() {
+  const { t } = useI18n();
+  return (
+    <Button asChild variant="ghost" size="sm" className="-ms-2 mb-3 text-muted-foreground">
+      <Link href="/operations/pipelines">
+        <ArrowLeft className="rtl:rotate-180" strokeWidth={1.75} />
+        {t("assets.pipeline.back")}
+      </Link>
+    </Button>
+  );
+}
+
+/* ── First-load skeleton, shaped like the page ── */
+function DetailSkeleton() {
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8" aria-busy>
+      <Skeleton className="mb-4 h-8 w-28" />
+      <div className="mb-6 space-y-2">
+        <Skeleton className="h-8 w-72 max-w-full" />
+        <Skeleton className="h-4 w-48" />
+      </div>
+      <Skeleton className="h-[156px] rounded-xl" />
+      <Skeleton className="mt-6 h-[420px] rounded-xl" />
+      <Skeleton className="mt-6 h-[280px] rounded-xl" />
+    </div>
+  );
+}
+
+/* ── Specifications ── */
+function SpecsCard({ pipeline: p }: { pipeline: Pipeline }) {
+  const { t } = useI18n();
+  const f = useFormat();
+  return (
+    <Card className="p-5">
+      <h2 className="text-sm font-semibold">{t("assets.pipeline.specs.title")}</h2>
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+        <Spec label={t("assets.pipeline.specs.length")} value={f.number(p.length, ONE_DECIMAL)} unit={t("assets.units.km")} />
+        <Spec label={t("assets.pipeline.specs.diameter")} value={f.number(p.diameter, ONE_DECIMAL)} unit={t("assets.units.inch")} />
+        <Spec label={t("assets.pipeline.specs.material")} value={f.enum("material", p.material)} />
+        <Spec label={t("assets.pipeline.specs.product")} value={f.enum("productType", p.productType)} />
+        <Spec
+          label={t("assets.pipeline.specs.pressureRange")}
+          value={`${f.number(p.pressureMin, ONE_DECIMAL)}–${f.number(p.pressureMax, ONE_DECIMAL)}`}
+          unit={t("assets.units.bar")}
+          ltr
+        />
+        {p.flowRate !== null && (
+          <Spec label={t("assets.pipeline.specs.flowRate")} value={f.number(p.flowRate, { maximumFractionDigits: 0 })} unit={t("assets.units.flow")} />
+        )}
+        <Spec label={t("assets.pipeline.specs.installed")} value={f.date(p.installedAt)} />
+        <Spec
+          label={t("assets.pipeline.specs.lastInspection")}
+          value={p.lastInspection ? f.date(p.lastInspection) : t("assets.pipeline.specs.notRecorded")}
+          muted={!p.lastInspection}
+        />
+      </dl>
+    </Card>
+  );
+}
+
+function Spec({ label, value, unit, ltr, muted }: { label: string; value: string; unit?: string; ltr?: boolean; muted?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className={cn("mt-1 text-sm font-medium", muted && "font-normal text-muted-foreground")}>
+        <span className="num" dir={ltr ? "ltr" : undefined}>{value}</span>
+        {unit && <span className="ms-1 text-xs font-normal text-muted-foreground">{unit}</span>}
+      </dd>
+    </div>
+  );
+}
+
+/* ── AI analysis result ── */
+function AnalysisSkeleton() {
+  return (
+    <Card className="space-y-3 p-5" aria-busy>
+      <Skeleton className="h-5 w-48" />
+      <Skeleton className="h-4 w-full max-w-xl" />
+      <Skeleton className="h-4 w-2/3 max-w-md" />
+    </Card>
+  );
+}
+
+function AnalysisPanel({ result }: { result: AnalysisResult }) {
+  const { t, isAr } = useI18n();
+  const f = useFormat();
+  const a = result.analysis;
+  const summary = (isAr ? a.summaryAr || a.summary : a.summary) ?? "";
+  const confidence = t("assets.pipeline.analysis.confidence", { n: f.number(Math.round((a.confidence ?? 0) * 100)) });
+  const duration = t("assets.pipeline.analysis.duration", {
+    n: t("assets.units.seconds", { n: f.number(result.meta.durationMs / 1000, ONE_DECIMAL) }),
+  });
+
+  if (!a.leakDetected) {
+    return (
+      <Card className={cn("animate-fade-in border-s-[3px] p-5", TONE_EDGE.success)}>
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" strokeWidth={1.75} />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold">{t("assets.pipeline.analysis.noLeakTitle")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{summary || t("assets.pipeline.analysis.noLeakBody")}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {confidence} · {duration}
+            </p>
+          </div>
+        </div>
       </Card>
+    );
+  }
 
-      {/* Pressure Points Table */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur">
-        <CardContent className="p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <MapPin className="h-5 w-5 text-cyan-400" />
-            <h2 className="text-lg font-bold">Pressure Points</h2>
-            <span className="text-xs text-muted-foreground">
-              {pipeline.pressurePoints.length} sensors
-            </span>
+  const severity = a.severity || "MEDIUM";
+  const tone = toneFor(severity);
+  const actions = a.immediateActions ?? [];
+  const predictions = a.predictions ?? [];
+  const linked = result.linked;
+  const km = a.estimatedKmFromStart;
+
+  return (
+    <Card className={cn("animate-fade-in overflow-hidden border-s-[3px]", TONE_EDGE[tone])}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b p-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <AlertTriangle className={cn("mt-0.5 h-5 w-5 shrink-0", TONE_TEXT[tone])} strokeWidth={1.75} />
+          <div className="min-w-0">
+            <h2 className={cn("font-semibold", TONE_TEXT[tone])}>{t("assets.pipeline.analysis.leakTitle")}</h2>
+            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              {result.leakAlert && <span>{t("assets.pipeline.analysis.alertNumber", { number: result.leakAlert.alertNumber })}</span>}
+              <span>{confidence}</span>
+              <span>{duration}</span>
+            </p>
           </div>
+        </div>
+        <StatusBadge value={severity} group="severity" />
+      </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b border-border/40">
-                <tr>
-                  <th className="text-left py-2.5 font-medium">Code</th>
-                  <th className="text-left py-2.5 font-medium">Position</th>
-                  <th className="text-left py-2.5 font-medium">Current Pressure</th>
-                  <th className="text-left py-2.5 font-medium">Flow</th>
-                  <th className="text-left py-2.5 font-medium">Temp</th>
-                  <th className="text-left py-2.5 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pipeline.pressurePoints.map((point) => (
-                  <tr key={point.id} className="border-b last:border-0 border-border/30 hover:bg-muted/20 transition-colors">
-                    <td className="py-3 font-mono text-xs text-cyan-400">{point.code}</td>
-                    <td className="py-3 text-foreground/80">km {point.positionKm.toFixed(1)}</td>
-                    <td className="py-3">
-                      {point.currentPressure ? (
-                        <span className={cn(
-                          "font-semibold",
-                          point.status === "CRITICAL" && "text-red-400",
-                          point.status === "WARNING" && "text-amber-400",
-                          point.status === "NORMAL" && "text-cyan-400",
-                        )}>
-                          {point.currentPressure.toFixed(1)} bar
-                        </span>
-                      ) : <span className="text-muted-foreground">—</span>}
+      <div className="grid gap-px bg-border md:grid-cols-2">
+        <Section title={t("assets.pipeline.analysis.summary")}>
+          <p className="text-sm leading-relaxed text-foreground/90">{summary}</p>
+        </Section>
+
+        <Section title={t("assets.pipeline.analysis.location")} icon={MapPin}>
+          {km !== null && km !== undefined && (
+            <p className="text-sm">
+              {t("assets.pipeline.analysis.fromStart", { km: t("assets.units.kmAt", { n: f.number(km, ONE_DECIMAL) }) })}
+            </p>
+          )}
+          {a.estimatedLat != null && a.estimatedLng != null && (
+            <p dir="ltr" className="mt-1 text-start font-mono text-xs text-muted-foreground">
+              {f.number(a.estimatedLat, { maximumFractionDigits: 4 })}, {f.number(a.estimatedLng, { maximumFractionDigits: 4 })}
+            </p>
+          )}
+          {a.pressureDrop != null && (
+            <p className="mt-3 text-sm">
+              <span className="text-muted-foreground">{t("assets.pipeline.analysis.pressureDrop")}: </span>
+              <span className={cn("num font-semibold", TONE_TEXT.danger)}>{f.number(a.pressureDrop, ONE_DECIMAL)}</span>
+              <span className="ms-1 text-xs text-muted-foreground">{t("assets.units.bar")}</span>
+            </p>
+          )}
+        </Section>
+
+        {actions.length > 0 && (
+          <Section title={t("assets.pipeline.analysis.actions")}>
+            <ol className="list-decimal space-y-1.5 ps-5 text-sm leading-relaxed text-foreground/90">
+              {actions.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ol>
+          </Section>
+        )}
+
+        {predictions.length > 0 && (
+          <Section title={t("assets.pipeline.analysis.predictions")}>
+            <ul className="list-disc space-y-1.5 ps-5 text-sm leading-relaxed text-foreground/90">
+              {predictions.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {a.rootCause && (
+          <Section title={t("assets.pipeline.analysis.rootCause")} className="md:col-span-2">
+            <p className="text-sm leading-relaxed text-foreground/90">{a.rootCause}</p>
+          </Section>
+        )}
+
+        {linked && (linked.incident || linked.observation || linked.emergency) && (
+          <Section title={t("assets.pipeline.analysis.linked")} className="md:col-span-2">
+            <div className="flex flex-wrap gap-2">
+              {linked.incident && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/safety/incidents/${linked.incident.id}`}>
+                    {t("assets.pipeline.analysis.linkedIncident", { number: linked.incident.number })}
+                  </Link>
+                </Button>
+              )}
+              {linked.observation && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/safety/observations">
+                    {t("assets.pipeline.analysis.linkedObservation", { number: linked.observation.number })}
+                  </Link>
+                </Button>
+              )}
+              {linked.emergency && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/command/emergencies">{t("assets.pipeline.analysis.linkedEmergency")}</Link>
+                </Button>
+              )}
+            </div>
+          </Section>
+        )}
+      </div>
+
+      <p className="flex items-center gap-1.5 border-t px-5 py-3 text-xs text-muted-foreground">
+        <BrainCircuit className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+        {t("assets.pipeline.analysis.aiNote")}
+        {isAr && <span>{t("assets.pipeline.analysis.englishOnly")}</span>}
+      </p>
+    </Card>
+  );
+}
+
+function Section({
+  title, icon: Icon, className, children,
+}: {
+  title: string;
+  icon?: typeof MapPin;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={cn("bg-card p-5", className)}>
+      <h3 className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        {Icon && <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />}
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/* ── Pressure chart ── */
+function PressureChartCard({
+  series, min, max, refreshing, updatedAt, onRefresh,
+}: {
+  series: ReadingSeries[] | null;
+  min: number;
+  max: number;
+  refreshing: boolean;
+  updatedAt: number | null;
+  onRefresh: () => void;
+}) {
+  const { t } = useI18n();
+  const f = useFormat();
+  const c = useThemeColors();
+  const data = useMemo(() => buildChartData(series ?? []), [series]);
+  const lines = [c["chart-1"], c["chart-2"], c["chart-3"], c["chart-4"], c["chart-5"], c["chart-6"]];
+  const axisTick = { fontSize: 11, fill: c["muted-foreground"] };
+
+  return (
+    <Card className="p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <Activity className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} />
+            {t("assets.pipeline.chart.title")}
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t("assets.pipeline.chart.window")}
+            {updatedAt && <> · {t("assets.pipeline.updatedAt", { time: f.time(updatedAt) })}</>}
+          </p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing} className="text-muted-foreground">
+          <RotateCw className={cn(refreshing && "animate-spin")} strokeWidth={1.75} />
+          {t("common.refresh")}
+        </Button>
+      </div>
+
+      {data.length === 0 ? (
+        <EmptyState icon={Activity} title={t("assets.pipeline.chart.emptyTitle")} description={t("assets.pipeline.chart.emptyBody")} />
+      ) : (
+        <div dir="ltr" className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={c.border} vertical={false} />
+              <XAxis
+                dataKey="time"
+                tickFormatter={(v: string) => f.time(v)}
+                tick={axisTick}
+                stroke={c.border}
+                minTickGap={32}
+              />
+              <YAxis
+                domain={[Math.max(0, min - 10), max + 5]}
+                tickFormatter={(v: number) => f.number(v)}
+                tick={axisTick}
+                stroke={c.border}
+                width={60}
+                label={{ value: t("assets.pipeline.chart.axis"), angle: -90, position: "insideLeft", fill: c["muted-foreground"], fontSize: 11 }}
+              />
+              <Tooltip
+                labelFormatter={(v) => f.dateTime(String(v))}
+                formatter={(value, name) => [
+                  typeof value === "number" ? `${f.number(value, ONE_DECIMAL)} ${t("assets.units.bar")}` : String(value),
+                  name,
+                ]}
+                contentStyle={{
+                  backgroundColor: c.card,
+                  border: `1px solid ${c.border}`,
+                  borderRadius: 10,
+                  fontSize: 12,
+                  color: c.foreground,
+                }}
+                labelStyle={{ color: c["muted-foreground"] }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <ReferenceLine
+                y={min}
+                stroke={c.danger}
+                strokeDasharray="4 4"
+                label={{ value: t("assets.pipeline.chart.minSafe"), fontSize: 11, position: "insideBottomLeft", fill: c.danger }}
+              />
+              <ReferenceLine
+                y={max}
+                stroke={c.danger}
+                strokeDasharray="4 4"
+                label={{ value: t("assets.pipeline.chart.maxSafe"), fontSize: 11, position: "insideTopLeft", fill: c.danger }}
+              />
+              {(series ?? []).map((s, i) => (
+                <Line
+                  key={s.pointId}
+                  type="monotone"
+                  dataKey={s.code}
+                  name={s.code}
+                  stroke={lines[i % lines.length]}
+                  strokeWidth={1.75}
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ── Pressure points ── */
+function PointsCard({ points }: { points: PressurePoint[] }) {
+  const { t } = useI18n();
+  const f = useFormat();
+  const dash = "—";
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between border-b px-5 py-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <MapPin className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} />
+          {t("assets.pipeline.points.title")}
+        </h2>
+        <span className="text-xs text-muted-foreground">{t("assets.pipeline.points.count", { n: f.number(points.length) })}</span>
+      </div>
+
+      {points.length === 0 ? (
+        <EmptyState icon={MapPin} title={t("assets.pipeline.points.emptyTitle")} description={t("assets.pipeline.points.emptyBody")} />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b text-xs text-muted-foreground">
+              <tr>
+                <th className="px-5 py-2.5 text-start font-medium">{t("assets.pipeline.points.code")}</th>
+                <th className="px-3 py-2.5 text-start font-medium">{t("assets.pipeline.points.position")}</th>
+                <th className="px-3 py-2.5 text-start font-medium">{t("assets.pipeline.points.pressure")}</th>
+                <th className="px-3 py-2.5 text-start font-medium">{t("assets.pipeline.points.flow")}</th>
+                <th className="px-3 py-2.5 text-start font-medium">{t("assets.pipeline.points.temperature")}</th>
+                <th className="px-5 py-2.5 text-start font-medium">{t("assets.pipeline.points.status")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {points.map((p) => {
+                const tone = toneFor(p.status);
+                return (
+                  <tr key={p.id} className="transition-colors hover:bg-accent/40">
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <span dir="ltr" className="font-mono text-xs">{p.code}</span>
                     </td>
-                    <td className="py-3 text-foreground/70">{point.currentFlow?.toFixed(0) || "—"} m³/h</td>
-                    <td className="py-3 text-foreground/70">{point.currentTemp?.toFixed(1) || "—"}°C</td>
-                    <td className="py-3">
-                      <span className={cn(
-                        "text-xs px-2 py-0.5 rounded border font-medium",
-                        point.status === "NORMAL" && "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
-                        point.status === "WARNING" && "bg-amber-500/10 text-amber-400 border-amber-500/30",
-                        point.status === "CRITICAL" && "bg-red-500/10 text-red-400 border-red-500/30 animate-pulse",
-                      )}>
-                        {point.status}
-                      </span>
+                    <td className="whitespace-nowrap px-3 py-3 text-foreground/80">
+                      {t("assets.units.kmAt", { n: f.number(p.positionKm, ONE_DECIMAL) })}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      {p.currentPressure !== null ? (
+                        <>
+                          <span className={cn("num font-semibold", TONE_TEXT[tone])}>{f.number(p.currentPressure, ONE_DECIMAL)}</span>
+                          <span className="ms-1 text-xs text-muted-foreground">{t("assets.units.bar")}</span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">{dash}</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-foreground/80">
+                      {p.currentFlow !== null ? (
+                        <>
+                          <span className="num">{f.number(p.currentFlow, { maximumFractionDigits: 0 })}</span>
+                          <span className="ms-1 text-xs text-muted-foreground">{t("assets.units.flow")}</span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">{dash}</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-foreground/80">
+                      {p.currentTemp !== null ? (
+                        <>
+                          <span className="num">{f.number(p.currentTemp, ONE_DECIMAL)}</span>
+                          <span className="ms-1 text-xs text-muted-foreground">{t("assets.units.celsius")}</span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">{dash}</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <StatusBadge value={p.status} />
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }
 
-// ============ Helpers ============
-
-function Spec({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
+/* ── Recent leak alerts on this line ── */
+function LeakAlertsCard({ alerts }: { alerts: LeakAlert[] }) {
+  const { t } = useI18n();
+  const f = useFormat();
   return (
-    <div>
-      <p className="text-xs text-muted-foreground uppercase tracking-wider">{label}</p>
-      <p className="text-sm font-semibold mt-1.5 text-foreground">
-        {value}
-        {unit && <span className="text-xs text-muted-foreground ml-1 font-normal">{unit}</span>}
-      </p>
-    </div>
+    <Card className="self-start overflow-hidden">
+      <div className="flex items-center gap-2 border-b px-5 py-3">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} />
+        <h2 className="text-sm font-semibold">{t("assets.pipeline.leaks.title")}</h2>
+      </div>
+      <ul className="divide-y">
+        {alerts.map((l) => {
+          const tone = toneFor(l.severity);
+          return (
+            <li key={l.id} className="flex items-start gap-3 px-5 py-3">
+              <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", TONE_DOT[tone])} aria-hidden />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span dir="ltr" className="font-mono text-xs">{l.alertNumber}</span>
+                  <span className={cn("text-xs font-medium", TONE_TEXT[tone])}>{f.enum("severity", l.severity)}</span>
+                  <StatusBadge value={l.status} variant="dot" />
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t("assets.pipeline.leaks.at", { km: t("assets.units.kmAt", { n: f.number(l.estimatedKmFromStart, ONE_DECIMAL) }) })}
+                  {" · "}
+                  {t("assets.pipeline.leaks.detected", { time: f.relative(l.detectedAt) })}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 
-function buildChartData(series: ReadingSeries[]) {
-  const timeMap = new Map<string, any>();
+/* ── Helpers ── */
+/** Parsed API envelope, or null when the body isn't JSON. */
+async function readJson<T>(res: Response) {
+  try {
+    return (await res.json()) as ApiResponse<T>;
+  } catch {
+    return null;
+  }
+}
+
+type ChartRow = { time: string } & Record<string, number | string>;
+
+function buildChartData(series: ReadingSeries[]): ChartRow[] {
+  const byTime = new Map<string, ChartRow>();
   for (const s of series) {
     for (const r of s.readings) {
       const key = new Date(r.time).toISOString();
-      if (!timeMap.has(key)) timeMap.set(key, { time: key });
-      timeMap.get(key)[s.code] = r.pressure;
+      const row = byTime.get(key) ?? { time: key };
+      row[s.code] = r.pressure;
+      byTime.set(key, row);
     }
   }
-  return Array.from(timeMap.values()).sort((a, b) =>
-    new Date(a.time).getTime() - new Date(b.time).getTime()
-  );
+  return Array.from(byTime.values()).sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 }
