@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { playSound } from "@/lib/sound";
 import { useI18n } from "@/lib/i18n/client";
 import { formatDateTime } from "@/lib/i18n/translate";
+import { refreshLiveFeed, subscribeLiveFeed } from "@/lib/live-feed";
 
 interface Notification {
   id: string;
@@ -22,8 +23,6 @@ interface Notification {
   createdAt: string;
 }
 
-const POLL_MS = 10_000;
-
 export function NotificationsBell() {
   const { t, locale } = useI18n();
   const [items, setItems] = useState<Notification[]>([]);
@@ -31,22 +30,12 @@ export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  async function load() {
-    try {
-      const r = await fetch("/api/notifications?limit=20", { cache: "no-store" });
-      const j = await r.json();
-      if (j.ok) {
-        setItems(j.data.items);
-        setUnread(j.data.unreadCount);
-      }
-    } catch { /* swallow */ }
-  }
-
-  useEffect(() => {
-    load();
-    const interval = window.setInterval(load, POLL_MS);
-    return () => window.clearInterval(interval);
-  }, []);
+  // Shared app-shell poll (/api/live) — no separate request for the bell
+  useEffect(() => subscribeLiveFeed((feed) => {
+    setItems(feed.notifications);
+    setUnread(feed.unreadCount);
+  }), []);
+  const load = refreshLiveFeed;
 
   // Close on outside-click
   useEffect(() => {

@@ -6,12 +6,8 @@
  */
 import { useEffect, useRef } from "react";
 import { playForType, playForSeverity, playSound } from "@/lib/sound";
+import { subscribeLiveFeed, type LiveFeed } from "@/lib/live-feed";
 
-interface AlertItem { id: string; type: string; severity?: string; createdAt: string }
-interface WellnessAlertItem { id: string; alertType: string; severity: string; createdAt: string }
-interface NotificationItem { id: string; type: string; severity: string; createdAt: string }
-
-const POLL_MS = 8_000;
 const STALENESS_MS = 30_000;
 
 export function AlertSound() {
@@ -21,20 +17,12 @@ export function AlertSound() {
   const firstLoad = useRef(true);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
+    // Shared app-shell poll (/api/live), paused while the tab is hidden
+    function onFeed(feed: LiveFeed) {
       try {
-        const [aR, wR, nR] = await Promise.all([
-          fetch("/api/alerts?limit=10", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
-          fetch("/api/wellness/alerts?status=OPEN", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
-          fetch("/api/notifications?unread=1&limit=10", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
-        ]);
-        if (cancelled) return;
-
-        const alerts: AlertItem[] = aR?.data?.alerts ?? (Array.isArray(aR?.data) ? aR.data : []);
-        const wellness: WellnessAlertItem[] = wR?.data?.alerts ?? [];
-        const notifs: NotificationItem[] = nR?.data?.items ?? [];
+        const alerts = feed.alerts;
+        const wellness = feed.wellness;
+        const notifs = feed.notifications.filter((n) => !n.readAt);
 
         const now = Date.now();
 
@@ -51,7 +39,7 @@ export function AlertSound() {
           if (seenAlertIds.current.has(a.id)) continue;
           seenAlertIds.current.add(a.id);
           if (now - new Date(a.createdAt).getTime() > STALENESS_MS) continue;
-          playForType(a.type, a.severity);
+          playForType(a.type);
         }
         for (const w of wellness) {
           if (seenWellnessIds.current.has(w.id)) continue;
@@ -69,9 +57,7 @@ export function AlertSound() {
       } catch { /* swallow */ }
     }
 
-    poll();
-    const i = window.setInterval(poll, POLL_MS);
-    return () => { cancelled = true; window.clearInterval(i); };
+    return subscribeLiveFeed(onFeed);
   }, []);
 
   return null;
