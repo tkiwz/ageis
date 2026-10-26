@@ -254,6 +254,7 @@ model Incident {
   assignee        User?            @relation("IncidentAssignee", fields: [assigneeId], references: [id])
   actions         IncidentAction[]
   investigation   Investigation?
+  videos          IncidentVideo[]
 
   @@index([status, severity])
   @@index([assigneeId])
@@ -1027,30 +1028,30 @@ model AISuggestion {
 // Kill Switch + budget tracking + explainability infrastructure.
 
 model AutonomySettings {
-  id                  String   @id @default("singleton")
+  id                  String    @id @default("singleton")
   // Master kill switch — when false, NO autonomous action runs.
-  globalEnabled       Boolean  @default(true)
+  globalEnabled       Boolean   @default(true)
   // Per-module switches
-  pipelineLoopEnabled Boolean  @default(true)
-  forecastEnabled     Boolean  @default(true)
-  voiceActionsEnabled Boolean  @default(true)
-  permitAutoApproval  Boolean  @default(false)
-  visionAutoActions   Boolean  @default(true)
+  pipelineLoopEnabled Boolean   @default(true)
+  forecastEnabled     Boolean   @default(true)
+  voiceActionsEnabled Boolean   @default(true)
+  permitAutoApproval  Boolean   @default(false)
+  visionAutoActions   Boolean   @default(true)
   // Demo Mode — disables real timers, only manual triggers work.
-  demoMode            Boolean  @default(false)
+  demoMode            Boolean   @default(false)
   // Loop cadence
-  pipelinePollSeconds Int      @default(30)
+  pipelinePollSeconds Int       @default(30)
   // Budget caps (USD-equivalent, computed from tokens)
-  dailyBudgetUsd      Float    @default(50.0)
-  monthlyBudgetUsd    Float    @default(1000.0)
+  dailyBudgetUsd      Float     @default(50.0)
+  monthlyBudgetUsd    Float     @default(1000.0)
   // Hard rate limits
-  maxCallsPerMinute   Int      @default(20)
-  maxCallsPerHour     Int      @default(200)
+  maxCallsPerMinute   Int       @default(20)
+  maxCallsPerHour     Int       @default(200)
   lastPipelineTickAt  DateTime? // global tick throttle (one tick per poll interval for all tabs)
   // Audit
   lastModifiedById    String?
-  lastModifiedAt      DateTime @updatedAt
-  createdAt           DateTime @default(now())
+  lastModifiedAt      DateTime  @updatedAt
+  createdAt           DateTime  @default(now())
 }
 
 // Voice conversation memory — short rolling window per user/session.
@@ -1222,4 +1223,30 @@ model LeakAlert {
   updatedAt            DateTime  @updatedAt
 
   @@index([pipelineId])
+}
+
+/// AI training video for an incident (Veo). Stored once, reused — never regenerated
+/// unless a manager asks for a new one. Bytes live here so the Google key never
+/// reaches the browser and the video survives Google's 48h file expiry.
+model IncidentVideo {
+  id          String    @id @default(cuid())
+  incidentId  String
+  incident    Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  operationId String?
+  status      String    @default("PROCESSING") // PROCESSING, COMPLETED, FAILED
+  model       String
+  prompt      String
+  summaryEn   String?
+  summaryAr   String?
+  lessonsEn   String? // JSON array
+  lessonsAr   String? // JSON array
+  data        Bytes?
+  mimeType    String?
+  sizeBytes   Int?
+  error       String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([incidentId, createdAt])
 }

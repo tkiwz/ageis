@@ -18,6 +18,8 @@ function getClient(): Anthropic {
 }
 
 interface ChatOptions {
+  /** GLM model to use if this call falls back (default GLM_MODEL). */
+  glmModel?: string;
   system: string;
   messages: { role: "user" | "assistant"; content: string }[];
   maxTokens?: number;
@@ -57,8 +59,9 @@ let claudeDownUntil = 0;
  * ZHIPU_API_KEY is set, answer with GLM instead. result.model says which.
  */
 export async function claudeChat(opts: ChatOptions): Promise<ChatResult> {
+  const fallback = () => glmChat({ ...opts, model: opts.glmModel });
   if (glmEnabled() && (Date.now() < claudeDownUntil || !process.env.ANTHROPIC_API_KEY)) {
-    return glmChat(opts);
+    return fallback();
   }
   try {
     return await claudeOnly(opts);
@@ -66,7 +69,7 @@ export async function claudeChat(opts: ChatOptions): Promise<ChatResult> {
     if (!glmEnabled() || !isProviderUnavailable(err)) throw err;
     claudeDownUntil = Date.now() + CLAUDE_COOLDOWN_MS;
     console.warn("[ai] Claude unavailable, using GLM fallback:", (err as Error)?.message?.slice(0, 120));
-    return glmChat(opts);
+    return fallback();
   }
 }
 

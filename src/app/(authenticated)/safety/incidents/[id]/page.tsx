@@ -7,11 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   AlertTriangle, Brain, Loader2, CheckCircle2,
-  MapPin, Clock, User, Clapperboard, Siren,
+  MapPin, Clock, User, Siren,
   ChevronRight, Shield, TrendingUp,
 } from "lucide-react";
 import { cn, timeAgo, formatDateTime, riskColor } from "@/lib/utils";
 import { ShareInsightButton } from "@/components/knowledge/share-insight-button";
+import { IncidentVideoCard } from "@/components/incidents/incident-video";
 import type { ApiResponse } from "@/types";
 
 interface Incident {
@@ -53,14 +54,6 @@ interface AIAnalysis {
   predictions?: string[];
 }
 
-interface VideoState {
-  status: "IDLE" | "SUBMITTING" | "PROCESSING" | "DONE" | "ERROR";
-  videoPrompt: string;
-  videoUrl: string | null;
-  predictionId: string | null;
-  message: string;
-  pollCount: number;
-}
 
 function parseAI(raw: unknown): AIAnalysis | null {
   if (!raw) return null;
@@ -79,10 +72,6 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeErr, setAnalyzeErr] = useState<string | null>(null);
 
-  const [video, setVideo] = useState<VideoState>({
-    status: "IDLE", videoPrompt: "", videoUrl: null,
-    predictionId: null, message: "", pollCount: 0,
-  });
 
   const ai = useMemo(() => parseAI(incident?.aiAnalysis), [incident?.aiAnalysis]);
 
@@ -103,89 +92,6 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
     }
   }
 
-  async function generateVideo() {
-    if (!incident) return;
-    setVideo({
-      status: "SUBMITTING", videoPrompt: "", videoUrl: null,
-      predictionId: null, message: "Submitting...", pollCount: 0,
-    });
-    try {
-      const res = await fetch("/api/ai/generate-video", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ incidentId: incident.id }),
-      });
-      const json = (await res.json()) as ApiResponse<{
-        status: string; videoPrompt: string;
-        predictionId: string | null; videoUrl: string | null; message: string;
-      }>;
-      if (!json.ok || !json.data) throw new Error(json.error?.message ?? "Submission failed");
-
-      const { videoPrompt, predictionId, videoUrl, status } = json.data;
-      if (!predictionId || status !== "PROCESSING") {
-        setVideo({
-          status: "DONE", videoPrompt, videoUrl, predictionId: null,
-          message: json.data.message, pollCount: 0,
-        });
-        return;
-      }
-
-      setVideo((v) => ({
-        ...v, status: "PROCESSING", videoPrompt,
-        predictionId, message: "Generating video...",
-      }));
-
-      // Poll for up to 120 attempts × 5s = 10 minutes
-      for (let i = 0; i < 120; i++) {
-        await new Promise((r) => setTimeout(r, 5000));
-
-        const pollRes = await fetch(`/api/ai/video-status/${predictionId}`, { credentials: "include" });
-        const pollJson = (await pollRes.json()) as ApiResponse<{
-          status: string; videoUrl: string | null; error?: string;
-        }>;
-
-        if (!pollJson.ok || !pollJson.data) {
-          console.log(`[poll ${i}] not ok, retrying...`);
-          continue;
-        }
-
-        const { status: pStatus, videoUrl: pUrl } = pollJson.data;
-        const secs = (i + 1) * 5;
-        const mins = Math.round(secs / 60);
-        setVideo((v) => ({
-          ...v, pollCount: i + 1,
-          message: secs < 60 ? `Generating... ${secs}s` : `Generating... ~${mins} min`,
-        }));
-
-        if ((pStatus === "COMPLETED" || pStatus === "succeeded") && pUrl) {
-          setVideo((v) => ({
-            ...v, status: "DONE", videoUrl: pUrl,
-            message: "Video ready!",
-          }));
-          fetch("/api/notify/whatsapp", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              message: `*Training Video Ready*\nIncident: ${incident.title}\nSite: ${incident.site?.name ?? "N/A"}\nWatch: ${pUrl}\n_AEGIS HSSE Platform_`,
-            }),
-          }).catch(() => {});
-          return;
-        }
-
-        if (pStatus === "FAILED" || pStatus === "failed") {
-          throw new Error(pollJson.data.error ?? "Video generation failed");
-        }
-      }
-      throw new Error("Timed out after 10 minutes");
-    } catch (err) {
-      setVideo((v) => ({
-        ...v, status: "ERROR",
-        message: err instanceof Error ? err.message : "Unknown error",
-      }));
-    }
-  }
 
   if (loading) return (
     <div className="container mx-auto px-6 py-12 text-center">
@@ -306,55 +212,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
         </CardContent>
       </Card>
 
-      {/* Training Video Generation */}
-      <Card className="glass mb-6">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Clapperboard className="h-4 w-4 text-primary" />
-              Training Video Generation
-              <span className="text-[10px] font-normal text-muted-foreground">AGEIS</span>
-            </CardTitle>
-            <Button size="sm" variant="outline" onClick={generateVideo}
-              disabled={video.status === "SUBMITTING" || video.status === "PROCESSING"}>
-              {video.status === "SUBMITTING" || video.status === "PROCESSING" ? (
-                <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> {video.message}</>
-              ) : (
-                <><Clapperboard className="mr-1.5 h-3 w-3" /> {video.videoUrl ? "Regenerate" : "Generate Video"}</>
-              )}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {video.status === "IDLE" && !video.videoUrl && (
-            <div className="py-4 text-center text-sm text-muted-foreground">
-              Generate an 8-second cinematic training video showing the correct safety response.
-            </div>
-          )}
-
-          {video.status === "ERROR" && (
-            <div className="rounded-md border border-risk-critical/40 bg-risk-critical/5 p-3 text-sm text-risk-critical">
-              {video.message}
-            </div>
-          )}
-
-          {video.videoPrompt && (
-            <div className="mb-3 rounded-md border border-border/40 bg-muted/10 p-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">AI Director Prompt</div>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{video.videoPrompt}</p>
-            </div>
-          )}
-
-          {video.videoUrl && (
-            <video
-              src={video.videoUrl}
-              controls
-              autoPlay
-              className="w-full rounded-md border border-border/40"
-            />
-          )}
-        </CardContent>
-      </Card>
+      <IncidentVideoCard incidentId={id} />
 
       {/* Auto-Generated Actions */}
       {incident.actions && incident.actions.length > 0 && (

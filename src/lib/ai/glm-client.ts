@@ -18,6 +18,8 @@ interface GlmChatOptions {
   messages: { role: "user" | "assistant"; content: string }[];
   maxTokens?: number;
   temperature?: number;
+  /** Override GLM_MODEL for this call. */
+  model?: string;
 }
 
 export async function glmChat(opts: GlmChatOptions) {
@@ -29,7 +31,7 @@ export async function glmChat(opts: GlmChatOptions) {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: GLM_MODEL,
+      model: opts.model ?? GLM_MODEL,
       messages: [{ role: "system", content: opts.system }, ...opts.messages],
       // GLM-4.5 "thinks" by default and spends the token budget on it — answer directly.
       thinking: { type: "disabled" },
@@ -50,7 +52,7 @@ export async function glmChat(opts: GlmChatOptions) {
 
   return {
     content: data.choices?.[0]?.message?.content ?? "",
-    model: GLM_MODEL,
+    model: opts.model ?? GLM_MODEL,
     usage: { inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0 },
     durationMs: Date.now() - started,
   };

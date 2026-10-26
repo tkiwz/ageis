@@ -22,6 +22,7 @@ const PRICING: Record<string, ModelPricing> = {
   "glm-4-flashx":    { inputPerMTok: 0.014, outputPerMTok: 0.014 },
   "glm-4-air":       { inputPerMTok: 0.07, outputPerMTok: 0.07 },
   "glm-4-plus":      { inputPerMTok: 0.7, outputPerMTok: 0.7 },
+  "glm-4.6":         { inputPerMTok: 0.6, outputPerMTok: 2.2 },
   // Gemini
   "gemini-2.0-flash-exp": { inputPerMTok: 0.075, outputPerMTok: 0.3 },
   "gemini-2.0-flash":     { inputPerMTok: 0.075, outputPerMTok: 0.3 },

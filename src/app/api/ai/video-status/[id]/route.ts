@@ -1,58 +1,41 @@
+/**
+ * GET /api/ai/video-status/:videoId — poll a video; when Veo is done the file is
+ * downloaded on the server and stored, so the Google key never reaches the browser.
+ */
 import { NextRequest } from "next/server";
-import { auth } from "@/auth";
+import { db } from "@/lib/db";
 import { ok, fail } from "@/lib/api-response";
+import { requireScopedAuth } from "@/lib/scoped-auth";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
+import { pollVeo } from "@/lib/ai/incident-video";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-const GOOGLE_API_KEY = process.env.GOOGLE_AI_API_KEY;
-const VEO_MODEL = "veo-3.1-fast-generate-preview";
-
-export async function GET(
-  _req: NextRequest,
-  ctx: { params: Promise<{ id: string }> }
-) {
-  const session = await auth();
-  if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
-  if (!GOOGLE_API_KEY) return fail("NO_KEY", "GOOGLE_AI_API_KEY not set", 500);
-
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
   const { id } = await ctx.params;
 
-  // Reconstruct full operation name from the ID
-  const operationName = `models/${VEO_MODEL}/operations/${id}`;
-  const url = `https://generativelanguage.googleapis.com/v1beta/${operationName}?key=${GOOGLE_API_KEY}`;
+  const video = await db.incidentVideo.findUnique({ where: { id }, select: { id: true, incidentId: true, status: true, operationId: true, error: true } });
+  if (!video) return fail("NOT_FOUND", "Video not found", 404);
+  const hidden = await denyUnlessSiteVisible("incident", video.incidentId);
+  if (hidden) return hidden;
 
-  console.log("[veo status] polling:", operationName);
-
-  const res = await fetch(url, { method: "GET" });
-  const data = await res.json();
-
-  if (!res.ok) {
-    console.error("[veo status] error:", JSON.stringify(data).slice(0, 500));
-    return fail("STATUS_ERROR", data?.error?.message ?? `Check failed (${res.status})`, 500);
+  if (video.status !== "PROCESSING" || !video.operationId) {
+    return ok({ status: video.status, videoUrl: video.status === "COMPLETED" ? `/api/ai/video/${id}` : null, error: video.error });
   }
 
-  if (!data.done) {
-    return ok({ status: "PROCESSING", videoUrl: null });
+  const r = await pollVeo(video.operationId);
+  if (!r.done) return ok({ status: "PROCESSING", videoUrl: null });
+  if ("error" in r) {
+    await db.incidentVideo.update({ where: { id }, data: { status: "FAILED", error: r.error.slice(0, 300) } });
+    return ok({ status: "FAILED", videoUrl: null, error: r.error });
   }
-
-  // Done — try multiple response shapes
-  const videoUri =
-    data?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri ??
-    data?.response?.generatedVideos?.[0]?.video?.uri ??
-    data?.response?.generated_videos?.[0]?.video?.uri ??
-    data?.response?.videos?.[0]?.uri;
-
-  if (!videoUri) {
-    console.error("[veo status] no video in response:", JSON.stringify(data).slice(0, 1000));
-    return fail("NO_VIDEO", "Video URI not found in response", 500);
-  }
-
-  // Append API key for client access
-  const videoUrl = videoUri.includes("?")
-    ? `${videoUri}&key=${GOOGLE_API_KEY}`
-    : `${videoUri}?key=${GOOGLE_API_KEY}`;
-
-  console.log("[veo status] completed:", videoUrl.slice(0, 100));
-  return ok({ status: "COMPLETED", videoUrl });
+  await db.incidentVideo.update({
+    where: { id },
+    data: { status: "COMPLETED", data: new Uint8Array(r.bytes), mimeType: r.mimeType, sizeBytes: r.bytes.length, completedAt: new Date() },
+  });
+  return ok({ status: "COMPLETED", videoUrl: `/api/ai/video/${id}` });
 }

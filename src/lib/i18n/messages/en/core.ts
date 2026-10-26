@@ -174,6 +174,25 @@ export const coreNs = {
     suggestions: "Suggestions",
     predictions: "Predictions",
   },
+  video: {
+    title: "Training video",
+    intro: "An 8-second 1080p video showing the correct response to this incident, with a short summary and lessons.",
+    generate: "Create video",
+    preview: "Preview the brief (free)",
+    regenerate: "Create a new version",
+    confirm: "Creating the video costs about ${usd} from the Google account. Continue?",
+    confirmNew: "A video already exists. A new version costs about ${usd} more. Continue?",
+    preparing: "Writing the brief…",
+    processing: "Creating the video (1–3 minutes)…",
+    failed: "The video couldn't be created. Nothing was saved.",
+    notConfigured: "Video creation isn't set up yet.",
+    summary: "Summary",
+    lessons: "Correct actions",
+    prompt: "Scene description",
+    saved: "Saved — opening this page again costs nothing.",
+    previewNote: "Preview only. No video was created and nothing was charged.",
+    costHint: "About ${usd} per video",
+  },
 };
 
 export type CoreMessages = DeepString<typeof coreNs>;

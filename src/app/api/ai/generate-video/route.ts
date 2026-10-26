@@ -1,197 +1,117 @@
+/**
+ * Incident training video.
+ *   GET  ?incidentId=…            latest video for the incident (no cost)
+ *   POST { incidentId, dryRun? , force? }
+ *        dryRun → brief + free key check, no Veo call
+ *        an existing COMPLETED/PROCESSING video is returned instead of paying again,
+ *        unless force=true (manager asks for a new one)
+ */
 import { NextRequest } from "next/server";
-import { auth } from "@/auth";
-import { ok, fail } from "@/lib/api-response";
+import { z } from "zod";
 import { db } from "@/lib/db";
-import { claudeChat } from "@/lib/ai/claude-client";
+import { ok, fail } from "@/lib/api-response";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { aiGuard } from "@/lib/security/ai-guard";
+import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
+import { requireScopedAuth } from "@/lib/scoped-auth";
+import { VEO_ESTIMATED_USD, VEO_MODEL, checkVeo, submitVeo, veoConfigured, writeBrief } from "@/lib/ai/incident-video";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const GOOGLE_API_KEY = process.env.GOOGLE_AI_API_KEY;
-const VEO_MODEL = "veo-3.1-fast-generate-preview";
+const PUBLIC_FIELDS = {
+  id: true, status: true, summaryEn: true, summaryAr: true, lessonsEn: true, lessonsAr: true,
+  error: true, createdAt: true, completedAt: true, prompt: true,
+} as const;
 
-const VIDEO_DIRECTOR_SYSTEM = `You are a senior HSSE training video director for Omani oil and gas operations.
-
-Convert incident reports into cinematic prompts for Veo 3.1 video generation.
-
-CRITICAL RULES:
-1. Single 8-second continuous shot, NO scene changes
-2. SHOW the CORRECT safety response, NEVER recreate accidents or injuries
-3. Workers in proper PPE: orange/red hardhats, FR coveralls, safety glasses, gloves, steel-toed boots
-4. Setting: Omani desert oil and gas facility (wellheads, pipelines, tank farms), golden hour, dramatic warm light
-5. Style: Professional documentary realism (Shell or BP training film), not Hollywood drama
-6. Length: 80-120 words
-7. Native audio cues: include ambient sounds (radio chatter, wind through facility, distant machinery)
-8. Use VISIBLE indicators: gas monitors with flashing red lights, warning signs, yellow caution tape, hazard barriers
-9. Show calm, deliberate, trained behavior. The worker is competent and follows protocol.
-
-FORMAT: Single paragraph. Start directly with camera shot. Include action, audio cues, and style.`;
-
-function buildVideoPrompt(incident: {
-  title: string;
-  description?: string;
-  type?: string;
-  severity?: string;
-  siteName?: string;
-}): string {
-  return `INCIDENT TO TRAIN ON:
-
-Title: ${incident.title}
-Type: ${incident.type ?? "Safety incident"}
-Severity: ${incident.severity ?? "MEDIUM"}
-Site: ${incident.siteName ?? "Omani oil and gas facility"}
-Description: ${incident.description ?? "Hazardous situation requiring proper response"}
-
-Create an 8-second Veo 3.1 training video prompt that DEMONSTRATES the correct safety response.
-
-Show:
-1. Worker identifies hazard via visible indicator
-2. Calm response: PPE check, hand signal, retreat, radio call
-3. Backup arrives in full PPE, scene secured
-
-Include audio cues (radio chatter, ambient facility sounds, footsteps).
-show the accident itself. Show competence and protocol.
-Output as a single cinematic paragraph (100 - 200 words).`;
+function present(v: { id: string; status: string; lessonsEn: string | null; lessonsAr: string | null } & Record<string, unknown>) {
+  const parse = (s: string | null) => { try { return s ? (JSON.parse(s) as string[]) : []; } catch { return []; } };
+  return {
+    ...v,
+    lessonsEn: parse(v.lessonsEn),
+    lessonsAr: parse(v.lessonsAr),
+    videoUrl: v.status === "COMPLETED" ? `/api/ai/video/${v.id}` : null,
+  };
 }
 
-async function submitToVeo(prompt: string): Promise<string> {
-  if (!GOOGLE_API_KEY) throw new Error("GOOGLE_AI_API_KEY not set");
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${VEO_MODEL}:predictLongRunning?key=${GOOGLE_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: {
-          aspectRatio: "16:9",
-          durationSeconds: 8,
-          personGeneration: "allow_all",
-        },
-      }),
-    }
-  );
-
-  const data = await res.json();
-  if (!res.ok) {
-    console.error("[veo] submit error:", JSON.stringify(data));
-    throw new Error(data?.error?.message ?? `Veo error ${res.status}`);
-  }
-  console.log("[veo] operation:", data.name);
-  return data.name as string;
+export async function GET(req: NextRequest) {
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
+  const incidentId = req.nextUrl.searchParams.get("incidentId");
+  if (!incidentId) return fail("VALIDATION", "incidentId required", 400);
+  const hidden = await denyUnlessSiteVisible("incident", incidentId);
+  if (hidden) return hidden;
+  const video = await db.incidentVideo.findFirst({ where: { incidentId }, orderBy: { createdAt: "desc" }, select: PUBLIC_FIELDS });
+  return ok({ video: video ? present(video) : null, estimatedUsd: VEO_ESTIMATED_USD, configured: veoConfigured() });
 }
 
-interface VideoGenRequest {
-  /** true → build the prompt and check the Veo key, but don't generate (no Veo cost). */
-  dryRun?: boolean;
-  incidentId?: string;
-  title?: string;
-  description?: string;
-  type?: string;
-  severity?: string;
-  siteName?: string;
-}
+const bodySchema = z.object({ incidentId: z.string().min(1).max(40), dryRun: z.boolean().optional(), force: z.boolean().optional() });
 
 export async function POST(req: NextRequest) {
   const denied = await denyUnlessRole(ROLE_GROUPS.MANAGE);
   if (denied) return denied;
-  const limited = await aiGuard("video");
-  if (limited) return limited;
-  const session = await auth();
-  if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
+  const scope = await requireScopedAuth();
+  if (scope instanceof Response) return scope;
 
-  let body: VideoGenRequest;
-  try { body = await req.json(); }
-  catch { return fail("INVALID_BODY", "Invalid JSON", 400); }
+  const parsed = bodySchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return fail("VALIDATION", "incidentId required", 400);
+  const { incidentId, dryRun, force } = parsed.data;
+  const hidden = await denyUnlessSiteVisible("incident", incidentId);
+  if (hidden) return hidden;
 
-  let incidentData: {
-    title: string;
-    description?: string;
-    type?: string;
-    severity?: string;
-    siteName?: string;
-  };
-
-  if (body.incidentId) {
-    const incident = await db.incident.findUnique({
-      where: { id: body.incidentId },
-      include: { site: true },
+  // Reuse: never pay twice for the same incident
+  if (!force && !dryRun) {
+    const existing = await db.incidentVideo.findFirst({
+      where: { incidentId, status: { in: ["COMPLETED", "PROCESSING"] } },
+      orderBy: { createdAt: "desc" },
+      select: PUBLIC_FIELDS,
     });
-    if (!incident) return fail("NOT_FOUND", "Incident not found", 404);
-    incidentData = {
-      title:       incident.title,
-      description: incident.description ?? undefined,
-      type:        incident.type,
-      severity:    incident.severity,
-      siteName:    incident.site?.name,
-    };
-  } else if (body.title) {
-    incidentData = { ...body, title: body.title };
-  } else {
-    return fail("MISSING_FIELDS", "incidentId or title required", 400);
+    if (existing) return ok({ video: present(existing), reused: true });
   }
 
-  // Step 1: Claude crafts the prompt
-  let videoPrompt: string;
+  const incident = await db.incident.findUnique({ where: { id: incidentId }, include: { site: { select: { name: true } } } });
+  if (!incident) return fail("NOT_FOUND", "Incident not found", 404);
+
+  if (!dryRun) {
+    const limited = await aiGuard("video");
+    if (limited) return limited;
+  }
+
+  let brief;
   try {
-    const result = await claudeChat({
-      system: VIDEO_DIRECTOR_SYSTEM,
-      messages: [{ role: "user", content: buildVideoPrompt(incidentData) }],
-      maxTokens: 500,
-      temperature: 0.85,
-    });
-    videoPrompt = result.content.trim();
-    console.log("[veo] prompt:", videoPrompt.slice(0, 200) + "...");
-  } catch (err) {
-    return fail("PROMPT_FAILED", "Request failed. Try again later.", 500);
+    brief = await writeBrief({ ...incident, siteName: incident.site?.name });
+  } catch {
+    return fail("BRIEF_FAILED", "Could not prepare the video brief. Try again.", 502);
   }
 
-  if (!GOOGLE_API_KEY) {
-    return ok({
-      status: "PROMPT_ONLY",
-      videoPrompt,
-      predictionId: null,
-      videoUrl: null,
-      message: "Add GOOGLE_AI_API_KEY with billing enabled.",
-    });
+  if (dryRun) {
+    return ok({ dryRun: true, brief, veoReachable: veoConfigured() ? await checkVeo() : false, estimatedUsd: VEO_ESTIMATED_USD });
   }
+  if (!veoConfigured()) return fail("NOT_CONFIGURED", "Video generation is not configured", 503);
 
-  if (body.dryRun) {
-    // Free check: model metadata request (no generation, no billing)
-    const check = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${VEO_MODEL}?key=${GOOGLE_API_KEY}`,
-    ).catch(() => null);
-    return ok({
-      status: "DRY_RUN",
-      videoPrompt,
-      veoReachable: Boolean(check?.ok),
-      veoStatus: check?.status ?? null,
-      predictionId: null,
-      videoUrl: null,
-    });
-  }
-
-  // Step 2: Submit to Veo
-  let operationName: string;
+  let operationId: string;
   try {
-    operationName = await submitToVeo(videoPrompt);
-  } catch (err) {
-    return fail("VIDEO_FAILED", "Request failed. Try again later.", 500);
+    operationId = await submitVeo(brief.prompt);
+  } catch (e) {
+    console.error("[veo] submit", (e as Error).message);
+    return fail("VIDEO_FAILED", "Video generation could not start. Try again later.", 502);
   }
 
-  // Extract just the operation ID (last segment) — clean URL-safe value
-  const operationId = operationName.split("/").pop() ?? operationName;
-
-  return ok({
-    status: "PROCESSING",
-    videoPrompt,
-    predictionId: operationId,
-    videoUrl: null,
-    message: "Veo 3 is generating the video (60-180 seconds)...",
+  const video = await db.incidentVideo.create({
+    data: {
+      incidentId,
+      operationId,
+      model: VEO_MODEL,
+      prompt: brief.prompt,
+      summaryEn: brief.summaryEn,
+      summaryAr: brief.summaryAr,
+      lessonsEn: JSON.stringify(brief.lessonsEn),
+      lessonsAr: JSON.stringify(brief.lessonsAr),
+      createdById: scope.userId,
+    },
+    select: PUBLIC_FIELDS,
   });
+  return ok({ video: present(video), reused: false });
 }
