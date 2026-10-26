@@ -372,13 +372,21 @@ model ComplianceItem {
 model Contractor {
   id              String    @id @default(cuid())
   name            String
+  nameAr          String?
   companyName     String
-  contactEmail    String
+  specialty       String?
+  specialtyAr     String?
+  website         String?
+  /// Where the public company details came from
+  source          String?
+  contactEmail    String?
   contactPhone    String?
+  /// 0 = not rated yet (set by HSSE after prequalification)
   safetyRating    Float     @default(0)
-  status          String    @default("ACTIVE")
+  /// PREQUALIFICATION | ACTIVE | SUSPENDED | EXPIRED
+  status          String    @default("PREQUALIFICATION")
   isAutoSuspended Boolean   @default(false)
-  contractStart   DateTime
+  contractStart   DateTime?
   contractEnd     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
