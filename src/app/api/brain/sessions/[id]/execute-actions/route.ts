@@ -72,6 +72,16 @@ export async function POST(
     return ok({ message: "No actions to execute", total: 0 });
   }
 
+  // Run once only: re-running would duplicate alerts, notifications and suggestions.
+  // Atomic claim so two clicks cannot both execute.
+  const claimed = await db.brainSession.updateMany({
+    where: { id, OR: [{ actionsTaken: null }, { actionsTaken: "" }] },
+    data: { actionsTaken: "[]" },
+  });
+  if (claimed.count === 0) {
+    return fail("ALREADY_EXECUTED", "Actions for this session were already executed", 409);
+  }
+
   try {
     const result = await executeActions(actions, {
       sessionId: id,
@@ -104,6 +114,8 @@ export async function POST(
     return ok(result);
   } catch (err) {
     log.error("Manual brain action execution failed", err, { sessionId: id });
+    // Release the claim so a manager can retry (results are written only on success)
+    await db.brainSession.updateMany({ where: { id, actionsTaken: "[]" }, data: { actionsTaken: null } }).catch(() => {});
     return fail("SERVER_ERROR", "Action execution failed", 500);
   }
 }

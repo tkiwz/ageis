@@ -44,7 +44,10 @@ export async function POST(req: NextRequest) {
   if (!body.type || !VALID_TYPES.includes(body.type as SignalType)) {
     return fail("INVALID_TYPE", `type must be one of: ${VALID_TYPES.join(", ")}`, 400);
   }
-  if (!body.trigger) return fail("MISSING", "trigger is required", 400);
+  if (!body.trigger || typeof body.trigger !== "string") return fail("MISSING", "trigger is required", 400);
+  // Bound what reaches the model (cost) — the payload is serialized into the prompt
+  if (body.trigger.length > 2000) return fail("TOO_LARGE", "trigger is too long (max 2000 characters)", 400);
+  if (JSON.stringify(body.payload ?? {}).length > 20_000) return fail("TOO_LARGE", "payload is too large", 400);
 
   const signal: BrainSignal = {
     type: body.type as SignalType,
