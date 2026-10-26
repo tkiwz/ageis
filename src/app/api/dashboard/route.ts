@@ -11,6 +11,8 @@ export async function GET() {
   if (scope instanceof NextResponse) return scope;
 
   try {
+    // Expire active permits past their end time before counting
+    await db.permit.updateMany({ where: { status: "ACTIVE", validUntil: { lt: new Date() } }, data: { status: "EXPIRED" } });
     const siteWhere = scope.where("siteId");
     const siteIdWhere = scope.where("id"); // for Site model itself
 

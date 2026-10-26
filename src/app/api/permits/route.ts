@@ -11,6 +11,9 @@ export async function GET(req: NextRequest) {
   const scope = await requireScopedAuth();
   if (scope instanceof NextResponse) return scope;
 
+  // Active permits past their end time are expired (kept in sync on every read)
+  await db.permit.updateMany({ where: { status: "ACTIVE", validUntil: { lt: new Date() } }, data: { status: "EXPIRED" } });
+
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
   const status = url.searchParams.get("status");
@@ -73,6 +76,9 @@ export async function POST(req: NextRequest) {
   if (!body.title || !body.description || !body.type || !body.siteId) {
     return fail("MISSING_FIELDS", "title, description, type, siteId required", 400);
   }
+  if (body.riskLevel && !["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(body.riskLevel)) {
+    return fail("VALIDATION", "riskLevel must be LOW, MEDIUM, HIGH or CRITICAL", 400);
+  }
 
   // CRITICAL: enforce site scope on create as well — a contractor cannot create
   // a permit for a site they don't have access to.
@@ -90,6 +96,9 @@ export async function POST(req: NextRequest) {
   const end = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const startD = body.startDate ? new Date(body.startDate) : now;
   const endD   = body.endDate   ? new Date(body.endDate)   : end;
+  if (isNaN(+startD) || isNaN(+endD) || endD <= startD) {
+    return fail("VALIDATION", "End time must be after start time", 400);
+  }
 
   const permit = await db.permit.create({
     data: {

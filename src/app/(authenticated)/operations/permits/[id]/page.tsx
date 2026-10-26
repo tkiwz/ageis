@@ -13,6 +13,7 @@ import {
 import { useApi } from "@/hooks/use-api";
 import { cn, riskColor, formatDateTime } from "@/lib/utils";
 import { ShareInsightButton } from "@/components/knowledge/share-insight-button";
+import { useI18n } from "@/lib/i18n/client";
 
 interface Permit {
   id: string;
@@ -56,6 +57,7 @@ function parseAI(raw: string | null): AIAnalysis | null {
 }
 
 export default function PermitDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { isAr } = useI18n();
   const { id } = use(params);
   const router = useRouter();
   const { data: permit, loading, refresh } = useApi<Permit>(`/api/permits/${id}`);
@@ -67,6 +69,11 @@ export default function PermitDetailPage({ params }: { params: Promise<{ id: str
   const ai = useMemo(() => freshAI ?? parseAI(permit?.aiAnalysis ?? null), [freshAI, permit?.aiAnalysis]);
 
   async function handleAction(action: "APPROVE" | "REJECT") {
+    let reason: string | undefined;
+    if (action === "REJECT") {
+      reason = window.prompt(isAr ? "سبب الرفض؟" : "Reason for rejecting?")?.trim();
+      if (!reason) return;
+    }
     setActing(action.toLowerCase() as "approve" | "reject");
     setError(null);
     try {
@@ -74,7 +81,7 @@ export default function PermitDetailPage({ params }: { params: Promise<{ id: str
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, reason }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error?.message ?? "Failed");
