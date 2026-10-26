@@ -29,6 +29,12 @@ export const mobile: MobileMessages = {
     voice: { title: "الأوامر الصوتية", hint: "تحدّث بالعربية أو الإنجليزية" },
   },
   report: {
+    photosLabel: "صور",
+    photosHint: "حتى 3 صور. فقط إذا كان التصوير آمناً.",
+    takePhoto: "التقط أو اختر صورة",
+    removePhoto: "حذف الصورة",
+    photoFailed: "تعذّرت إضافة الصورة. جرّب صورة أخرى.",
+    alertSent: "تم تنبيه فريق السلامة فوراً.",
     required: "مطلوب",
     title: "الإبلاغ عن حادثة",
     description: "يستغرق دقيقة تقريباً، ويصل بلاغك إلى فريق الصحة والسلامة والبيئة.",

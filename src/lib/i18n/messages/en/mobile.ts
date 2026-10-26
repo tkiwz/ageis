@@ -30,6 +30,12 @@ export const mobile = {
     voice: { title: "Voice command", hint: "Speak in Arabic or English" },
   },
   report: {
+    photosLabel: "Photos",
+    photosHint: "Up to 3. Only if it's safe to take them.",
+    takePhoto: "Take or choose a photo",
+    removePhoto: "Remove photo",
+    photoFailed: "That photo couldn't be added. Try another.",
+    alertSent: "The HSSE team was alerted right away.",
     required: "Required",
     title: "Report an incident",
     description: "Takes about a minute. Your report goes to the HSSE team.",

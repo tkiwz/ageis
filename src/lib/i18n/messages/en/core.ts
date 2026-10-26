@@ -175,6 +175,7 @@ export const coreNs = {
     predictions: "Predictions",
   },
   video: {
+    photos: "Photos from the field",
     title: "Training video",
     intro: "An 8-second 1080p video showing the correct response to this incident, with a short summary and lessons.",
     generate: "Create video",

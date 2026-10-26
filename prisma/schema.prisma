@@ -255,6 +255,7 @@ model Incident {
   actions         IncidentAction[]
   investigation   Investigation?
   videos          IncidentVideo[]
+  photos          IncidentPhoto[]
 
   @@index([status, severity])
   @@index([assigneeId])
@@ -1249,4 +1250,19 @@ model IncidentVideo {
   completedAt DateTime?
 
   @@index([incidentId, createdAt])
+}
+
+/// Photo attached to an incident report (from the mobile app). Compressed on
+/// the phone (≈1600px JPEG), served only through the authenticated API.
+model IncidentPhoto {
+  id          String   @id @default(cuid())
+  incidentId  String
+  incident    Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  data        Bytes
+  mimeType    String
+  sizeBytes   Int
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([incidentId])
 }

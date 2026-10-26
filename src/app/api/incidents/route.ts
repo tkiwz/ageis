@@ -5,6 +5,8 @@ import { z } from "zod";
 import { requireScopedAuth } from "@/lib/scoped-auth";
 import { zodMessage } from "@/lib/validations/api";
 import { appendAuditLog } from "@/lib/security/audit-chain";
+import { after } from "next/server";
+import { alertIncident, isUrgent } from "@/lib/notify/incident-alert";
 import { getAccessibleSiteIds, applySiteScope } from "@/lib/site-access";
 import type { Role } from "@/lib/constants";
 
@@ -89,7 +91,19 @@ const reportSchema = z.object({
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
   occurredAt: z.string().datetime().optional(),
+  /** Up to 3 photos as data URLs (compressed on the phone). */
+  photos: z.array(z.string().max(2_800_000)).max(3).optional(),
 });
+
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+
+/** data:image/jpeg;base64,… → bytes (jpeg/png/webp only, ≤ 2 MB). */
+function decodePhoto(dataUrl: string): { bytes: Uint8Array<ArrayBuffer>; mimeType: string } | null {
+  const m = dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) return null;
+  const bytes = new Uint8Array(Buffer.from(m[2], "base64"));
+  return bytes.length > 0 && bytes.length <= MAX_PHOTO_BYTES ? { bytes, mimeType: m[1] } : null;
+}
 
 /** Next INC-YYYY-NNNN for this year (max existing + 1). */
 async function nextNumber(offset = 0): Promise<string> {
@@ -138,6 +152,9 @@ export async function POST(req: Request) {
   }
   if (!siteId) return fail("NO_SITE", "No site linked to this user", 422);
 
+  const photos = (b.photos ?? []).map(decodePhoto);
+  if (photos.some((p) => !p)) return fail("VALIDATION", "photos: invalid image", 400);
+
   const location = [b.location, b.lat !== undefined && b.lng !== undefined ? `GPS ${b.lat.toFixed(5)}, ${b.lng.toFixed(5)}` : null]
     .filter(Boolean)
     .join(" · ") || "—";
@@ -161,6 +178,18 @@ export async function POST(req: Request) {
         },
         select: { id: true, incidentNumber: true },
       });
+      if (photos.length) {
+        await db.incidentPhoto.createMany({
+          data: photos.map((p) => ({ incidentId: incident.id, data: p!.bytes, mimeType: p!.mimeType, sizeBytes: p!.bytes.length, createdById: scope.userId })),
+        });
+      }
+      if (isUrgent(b.type, b.severity)) {
+        // Respond first; alert in the background (WhatsApp can be slow)
+        after(() =>
+          alertIncident({ ...incident, type: b.type, severity: b.severity, description: b.description, location, siteId: siteId!, reporterId: scope.userId, photoCount: photos.length })
+            .catch((e) => console.error("[incident alert]", e)),
+        );
+      }
       appendAuditLog({
         module: "SAFETY",
         action: "INCIDENT_REPORTED",

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, Car, Check, Cog, Droplets, Flame, HelpCircle, Loader2, LocateFixed, ShieldAlert, UserRoundX, WifiOff, Wind,
+  AlertTriangle, Camera, Car, Check, Cog, Droplets, Flame, HelpCircle, Loader2, LocateFixed, ShieldAlert, UserRoundX, WifiOff, Wind, X,
   type LucideIcon,
 } from "lucide-react";
 import { useFormat, useI18n } from "@/lib/i18n/client";
@@ -32,7 +32,22 @@ const TYPES: { id: string; icon: LucideIcon }[] = [
 
 interface Site { id: string; code: string; name: string; nameAr?: string | null }
 type Geo = { lat: number; lng: number; accuracy: number };
-type Result = { kind: "sent"; number: string } | { kind: "queued" };
+type Result = { kind: "sent"; number: string; urgent: boolean } | { kind: "queued" };
+
+const MAX_PHOTOS = 3;
+const URGENT_TYPES = new Set(["FIRE", "GAS_LEAK", "INJURY"]);
+
+/** Shrink a phone photo to ≤1600px JPEG (~200–400 KB) before upload. */
+async function compressPhoto(file: File): Promise<string> {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+  img.close();
+  return canvas.toDataURL("image/jpeg", 0.8);
+}
 
 export default function ReportPage() {
   const { t, isAr } = useI18n();
@@ -46,6 +61,9 @@ export default function ReportPage() {
   const [description, setDescription] = useState("");
   const [geo, setGeo] = useState<Geo | null>(null);
   const [geoState, setGeoState] = useState<"idle" | "locating" | "denied" | "failed">("idle");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photoError, setPhotoError] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [errors, setErrors] = useState<Partial<Record<"type" | "severity" | "description" | "form", MessageKey>>>({});
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
@@ -70,6 +88,19 @@ export default function ReportPage() {
     );
   }
 
+  async function addPhotos(files: FileList | null) {
+    setPhotoError(false);
+    for (const file of Array.from(files ?? []).slice(0, MAX_PHOTOS - photos.length)) {
+      try {
+        const url = await compressPhoto(file);
+        setPhotos((p) => (p.length < MAX_PHOTOS ? [...p, url] : p));
+      } catch {
+        setPhotoError(true);
+      }
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
   async function submit() {
     const next: typeof errors = {};
     if (!type) next.type = "mobile.report.errors.type";
@@ -89,12 +120,14 @@ export default function ReportPage() {
       lat: geo?.lat,
       lng: geo?.lng,
       occurredAt: new Date().toISOString(),
+      photos: photos.length ? photos : undefined,
     });
     setSending(false);
 
     if (!res.online) return setResult({ kind: "queued" });
     const body = res.result as { ok?: boolean; data?: { incidentNumber: string }; error?: { code?: string } } | undefined;
-    if (body?.ok && body.data) return setResult({ kind: "sent", number: body.data.incidentNumber });
+    if (body?.ok && body.data)
+      return setResult({ kind: "sent", number: body.data.incidentNumber, urgent: severity === "HIGH" || severity === "CRITICAL" || URGENT_TYPES.has(type!) });
     const code = body?.error?.code;
     setErrors({
       form:
@@ -112,6 +145,7 @@ export default function ReportPage() {
     setPlace("");
     setDescription("");
     setGeo(null);
+    setPhotos([]);
     setErrors({});
     setResult(null);
   }
@@ -130,6 +164,7 @@ export default function ReportPage() {
           </p>
         )}
         <p className="max-w-xs text-muted-foreground">{sent ? t("mobile.report.sent.body") : t("mobile.report.queued.body")}</p>
+        {sent && result.urgent && <p className="max-w-xs font-medium text-success">{t("mobile.report.alertSent")}</p>}
         <div className="mt-4 grid w-full max-w-xs gap-3">
           <Button size="lg" className="h-14 text-base" onClick={reset}>{t("mobile.report.another")}</Button>
           <Button size="lg" variant="outline" className="h-14 text-base" asChild>
@@ -244,6 +279,39 @@ export default function ReportPage() {
           rows={4}
           className="rounded-xl text-base"
         />
+      </fieldset>
+
+      {/* 5. Photos */}
+      <fieldset>
+        <Legend label={t("mobile.report.photosLabel")} hint={t("mobile.report.photosHint")} />
+        <div className="grid grid-cols-3 gap-2.5">
+          {photos.map((src, i) => (
+            <div key={i} className="relative aspect-square overflow-hidden rounded-2xl border bg-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt="" className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))}
+                aria-label={t("mobile.report.removePhoto")}
+                className="absolute end-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-background/90 shadow-card"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          ))}
+          {photos.length < MAX_PHOTOS && (
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed bg-card px-2 text-center text-sm text-muted-foreground active:scale-[0.97]"
+            >
+              <Camera className="h-7 w-7" strokeWidth={1.75} />
+              <span className="leading-tight">{t("mobile.report.takePhoto")}</span>
+            </button>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
+        {photoError && <p className="mt-2 text-sm text-danger">{t("mobile.report.photoFailed")}</p>}
       </fieldset>
 
       {errors.form && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm font-medium text-danger">{t(errors.form)}</p>}

@@ -13,9 +13,11 @@ import {
 import { cn, timeAgo, formatDateTime, riskColor } from "@/lib/utils";
 import { ShareInsightButton } from "@/components/knowledge/share-insight-button";
 import { IncidentVideoCard } from "@/components/incidents/incident-video";
+import { IncidentPhotos } from "@/components/incidents/incident-photos";
 import type { ApiResponse } from "@/types";
 
 interface Incident {
+  photos?: { id: string }[];
   id: string;
   incidentNumber: string;
   title: string;
@@ -211,6 +213,8 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
           )}
         </CardContent>
       </Card>
+
+      {incident.photos && incident.photos.length > 0 && <IncidentPhotos ids={incident.photos.map((p) => p.id)} />}
 
       <IncidentVideoCard incidentId={id} />
 

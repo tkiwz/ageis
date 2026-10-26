@@ -25,6 +25,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       reporter: { select: { id: true, name: true, role: true } },
       assignee: { select: { id: true, name: true, role: true } },
       actions:  { orderBy: { dueDate: "asc" } },
+      photos:   { select: { id: true }, orderBy: { createdAt: "asc" } },
     },
   });
 
