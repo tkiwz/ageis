@@ -5,7 +5,7 @@
  *   - Levels: debug, info, warn, error, fatal
  *   - Automatic redaction of obvious secrets in messages
  *   - Request-scoped child loggers (carry traceId, userId)
- *   - Sentry-compatible error capture if SENTRY_DSN is configured (stubbed)
+ *   - Sentry error capture when SENTRY_DSN is configured
  *   - Falls back cleanly when no observability backend is present
  */
 
@@ -62,22 +62,57 @@ function emit(payload: LogPayload): void {
     else console.log(out);
   }
 
-  // Forward errors to optional Sentry — stubbed so we don't import sentry-sdk
+  // Forward errors to Sentry when SENTRY_DSN is set (plain HTTP, no SDK)
   if ((payload.level === "error" || payload.level === "fatal") && payload.err && process.env.SENTRY_DSN) {
     sentryCapture(payload).catch(() => { /* never break callers */ });
   }
 }
 
+/**
+ * Sends one error event to Sentry over its plain HTTP envelope API (no SDK).
+ * DSN format: https://<publicKey>@<host>/<projectId>. Message, stack and
+ * context are redacted first; user ids only, never emails or tokens.
+ */
 async function sentryCapture(payload: LogPayload): Promise<void> {
-  // Lightweight DSN-based capture without pulling in the SDK.
-  // Real Sentry integration: import * as Sentry from "@sentry/nextjs"; Sentry.captureException(...)
-  // For now, write structured to a side channel if DSN configured.
-  const dsn = process.env.SENTRY_DSN!;
-  if (!dsn) return;
-  // Defer real implementation — emit a TODO marker so it's discoverable.
-  if (process.env.NODE_ENV !== "production") {
-    console.warn("[Sentry stub] would capture:", { dsn: "<redacted>", payload });
-  }
+  let dsn: URL;
+  try { dsn = new URL(process.env.SENTRY_DSN!); } catch { return; }
+  const projectId = dsn.pathname.replace(/^\//, "");
+  if (!dsn.username || !projectId) return;
+
+  const eventId = crypto.randomUUID().replace(/-/g, "");
+  const event = {
+    event_id: eventId,
+    timestamp: payload.ts,
+    platform: "node",
+    level: payload.level === "fatal" ? "fatal" : "error",
+    environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production",
+    release: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12),
+    server_name: process.env.VERCEL_REGION,
+    message: { formatted: redact(payload.msg) },
+    exception: payload.err ? {
+      values: [{ type: payload.err.name, value: redact(payload.err.message), stacktrace: undefined }],
+    } : undefined,
+    extra: {
+      ctx: payload.ctx ? JSON.parse(redact(JSON.stringify(payload.ctx))) : undefined,
+      stack: payload.err?.stack ? redact(payload.err.stack).slice(0, 8000) : undefined,
+    },
+    user: payload.ctx?.userId ? { id: String(payload.ctx.userId) } : undefined,
+  };
+  const envelope = [
+    JSON.stringify({ event_id: eventId, sent_at: new Date().toISOString() }),
+    JSON.stringify({ type: "event" }),
+    JSON.stringify(event),
+  ].join("\n");
+
+  await fetch(`${dsn.protocol}//${dsn.host}/api/${projectId}/envelope/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-sentry-envelope",
+      "X-Sentry-Auth": `Sentry sentry_version=7, sentry_key=${dsn.username}, sentry_client=aegis/1.0`,
+    },
+    body: envelope,
+    signal: AbortSignal.timeout(3000),
+  });
 }
 
 function makeLogger(baseCtx: LogContext = {}) {
