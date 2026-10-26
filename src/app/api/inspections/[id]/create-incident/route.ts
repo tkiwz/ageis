@@ -2,13 +2,15 @@
 // Creates a new Incident from a FAILED inspection.
 // Returns the new incidentId so the UI can redirect.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
+import { appendAuditLog } from "@/lib/security/audit-chain";
+import { isNumberClash, nextIncidentNumber } from "@/lib/incidents/number";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,49 +26,58 @@ export async function POST(
   if (hidden) return hidden;
 
   const session = await auth();
-  if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401) as unknown as Response;
+  if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const inspection = await db.inspection.findUnique({
     where:   { id },
     include: { site: true, conductedBy: true },
   });
 
-  if (!inspection) return fail("NOT_FOUND", "Inspection not found", 404) as unknown as Response;
+  if (!inspection) return fail("NOT_FOUND", "Inspection not found", 404);
   if (inspection.status !== "FAILED") {
-    return fail("INVALID_STATE", "Only FAILED inspections can create incidents", 422) as unknown as Response;
+    return fail("INVALID_STATE", "Only FAILED inspections can create incidents", 422);
   }
 
   // Idempotency — one incident per failed inspection
-  const existing = await db.incident.findFirst({
-    where: { idempotencyKey: `insp-fail-${id}` },
-  });
-  if (existing) {
-    return NextResponse.json({ ok: true, data: { incidentId: existing.id, existing: true } });
+  const key = `insp-fail-${id}`;
+  const existing = await db.incident.findFirst({ where: { idempotencyKey: key } });
+  if (existing) return ok({ incidentId: existing.id, existing: true });
+
+  const data = {
+    idempotencyKey: key,
+    title:          `[INSPECTION] ${inspection.title}`,
+    description:    `Incident created from failed inspection.\n\n` +
+                    `Type: ${inspection.type}\n` +
+                    `Inspector: ${inspection.conductedBy.name}\n` +
+                    `Notes: ${inspection.notes ?? "None"}`,
+    type:           "INSPECTION_FAILURE",
+    severity:       "MEDIUM",
+    status:         "REPORTED",
+    location:       inspection.site.name,
+    occurredAt:     inspection.conductedAt ?? new Date(),
+    isAutoEscalated: false,
+    siteId:         inspection.siteId,
+    reporterId:     session.user.id,
+  };
+
+  // Retry on a number clash (two reports at the same moment)
+  let incident;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      incident = await db.incident.create({ data: { ...data, incidentNumber: await nextIncidentNumber(db, attempt) } });
+      break;
+    } catch (err) {
+      if (!isNumberClash(err) || attempt >= 4) throw err;
+    }
   }
 
-  const count = await db.incident.count();
-  const year  = new Date().getFullYear();
-  const incidentNumber = `INC-${year}-${String(count + 1).padStart(4, "0")}`;
-
-  const incident = await db.incident.create({
-    data: {
-      incidentNumber,
-      idempotencyKey: `insp-fail-${id}`,
-      title:          `[INSPECTION] ${inspection.title.replace(/^\[SIM-INS\] /, "")}`,
-      description:    `Incident created from failed inspection.\n\n` +
-                      `Type: ${inspection.type}\n` +
-                      `Inspector: ${inspection.conductedBy.name}\n` +
-                      `Notes: ${inspection.notes ?? "None"}`,
-      type:           "INSPECTION_FAILURE",
-      severity:       "MEDIUM",
-      status:         "REPORTED",
-      location:       inspection.site.name,
-      occurredAt:     inspection.conductedAt ?? new Date(),
-      isAutoEscalated: false,
-      siteId:         inspection.siteId,
-      reporterId:     (session.user as { id: string }).id,
-    },
+  await appendAuditLog({
+    module: "INCIDENT",
+    action: "INCIDENT_FROM_INSPECTION",
+    description: `${incident.incidentNumber} created from failed inspection "${inspection.title}"`,
+    riskLevel: "MEDIUM",
+    userId: session.user.id,
+    siteId: inspection.siteId,
   });
-
-  return NextResponse.json({ ok: true, data: { incidentId: incident.id, existing: false } });
+  return ok({ incidentId: incident.id, existing: false });
 }

@@ -9,7 +9,7 @@ const TONES: Record<string, Tone> = {
   INFO: "info", LOW: "success", MEDIUM: "warning", HIGH: "danger", CRITICAL: "danger", EMERGENCY: "danger", WARNING: "warning",
   // healthy / done
   ACTIVE: "success", APPROVED: "success", COMPLETED: "success", DONE: "success", RESOLVED: "success", CLOSED: "neutral",
-  ONLINE: "success", OPERATIONAL: "success", NORMAL: "success", OK: "success", COMPLIANT: "success", EXECUTED: "success",
+  ONLINE: "success", OPERATIONAL: "success", NORMAL: "success", OK: "success", COMPLIANT: "success", EXECUTED: "success", PUBLISHED: "success", EXEMPT: "neutral",
   CONTAINED: "success", ACKNOWLEDGED: "neutral", ACKED: "neutral", AUTO_APPLIED: "success",
   // in progress / waiting
   PENDING: "warning", DRAFT: "neutral", SUBMITTED: "info", IN_REVIEW: "info", IN_PROGRESS: "info", TODO: "neutral",

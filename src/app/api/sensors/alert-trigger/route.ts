@@ -22,6 +22,7 @@ import { db }            from "@/lib/db";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { appendAuditLog } from "@/lib/security/audit-chain";
+import { nextIncidentNumber } from "@/lib/incidents/number";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,8 +88,7 @@ export async function POST(req: NextRequest) {
   });
   const reporterId = reporter?.id ?? SYSTEM_REPORTER_ID;
 
-  const incidentCount  = await db.incident.count();
-  const incidentNumber = `INC-${new Date().getFullYear()}-${String(incidentCount + 1).padStart(4, "0")}`;
+  const incidentNumber = await nextIncidentNumber();
 
   const icon     = body.alertLevel === "CRITICAL" ? "🚨" : "⚠️";
   const severity = body.alertLevel === "CRITICAL" ? "HIGH" : "MEDIUM";

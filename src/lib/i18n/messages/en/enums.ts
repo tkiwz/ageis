@@ -44,6 +44,8 @@ export const enums = {
     CRITICAL: "Critical",
     COMPLIANT: "Compliant",
     NON_COMPLIANT: "Non-compliant",
+    EXEMPT: "Exempt",
+    PUBLISHED: "Published",
     PROCESSING: "Processing",
     EXECUTED: "Executed",
     AUTO_APPLIED: "Applied automatically",

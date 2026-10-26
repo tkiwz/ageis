@@ -8,6 +8,7 @@ import { ROLE_GROUPS } from "@/lib/rbac";
 import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 import { aiGuard } from "@/lib/security/ai-guard";
 import { appendAuditLog } from "@/lib/security/audit-chain";
+import { nextIncidentNumber } from "@/lib/incidents/number";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -290,8 +291,7 @@ If no leak detected, set leakDetected: false, severity: null, and explain in sum
       // 1️⃣ INCIDENT (always for MEDIUM+)
       // ───────────────────────────────────────
       try {
-        const incidentCount = await db.incident.count();
-        const incidentNumber = `INC-${new Date().getFullYear()}-${String(incidentCount + 1).padStart(4, "0")}`;
+        const incidentNumber = await nextIncidentNumber();
 
         linked.incident = await db.incident.create({
           data: {

@@ -15,6 +15,7 @@ import { checkAutonomyAllowed } from "@/lib/autonomy/settings";
 import { issueConfirmationToken, verifyConfirmationToken } from "./confirmation-token";
 import type { Role } from "@/lib/constants";
 import { appendAuditLog } from "@/lib/security/audit-chain";
+import { nextIncidentNumber } from "@/lib/incidents/number";
 
 export interface VoiceActionContext {
   userId: string;
@@ -74,8 +75,7 @@ register({
       : await db.site.findFirst();
     if (!site) return { success: false, message: "No site available — please specify a site code." };
 
-    const count = await db.incident.count();
-    const incidentNumber = `INC-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
+    const incidentNumber = await nextIncidentNumber();
     const incident = await db.incident.create({
       data: {
         incidentNumber,

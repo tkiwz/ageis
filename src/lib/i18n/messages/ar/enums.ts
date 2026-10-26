@@ -43,6 +43,8 @@ export const enums: EnumMessages = {
     CRITICAL: "حرج",
     COMPLIANT: "ممتثل",
     NON_COMPLIANT: "غير ممتثل",
+    EXEMPT: "مُعفى",
+    PUBLISHED: "منشور",
     PROCESSING: "قيد المعالجة",
     EXECUTED: "تم التنفيذ",
     AUTO_APPLIED: "طُبّق تلقائياً",

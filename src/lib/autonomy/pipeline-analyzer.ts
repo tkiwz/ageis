@@ -17,6 +17,7 @@ import { db } from "@/lib/db";
 import { guardedClaudeChat } from "@/lib/ai/guarded-claude";
 import { log } from "@/lib/observability/logger";
 import { appendAuditLog } from "@/lib/security/audit-chain";
+import { nextIncidentNumber } from "@/lib/incidents/number";
 
 const SYSTEM_USER_EMAIL = "system@aegis.local";
 const AUTO_CASCADE_THRESHOLD = 0.85;
@@ -320,8 +321,7 @@ JSON shape:
     let emergencyId: string | undefined;
 
     if (siteId) {
-      const incidentCount = await tx.incident.count();
-      const incidentNumber = `INC-${new Date().getFullYear()}-${String(incidentCount + 1).padStart(4, "0")}`;
+      const incidentNumber = await nextIncidentNumber(tx);
       const incident = await tx.incident.create({
         data: {
           incidentNumber,

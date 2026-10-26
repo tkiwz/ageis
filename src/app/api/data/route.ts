@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyDeviceSecret } from "@/lib/security/device-auth";
 import { requireScopedAuth } from "@/lib/scoped-auth";
+import { nextIncidentNumber } from "@/lib/incidents/number";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,9 +45,7 @@ function checkDeviceKey(req: NextRequest): boolean {
   return verifyDeviceSecret(req);
 }
 
-function nextIncidentNumber(count: number): string {
-  return `INC-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
-}
+
 
 // ─────────────────────────────────────────────────────────────
 //  POST — ingest a reading from the vehicle ESP32
@@ -122,12 +121,11 @@ export async function POST(req: NextRequest) {
       });
 
       if (!existing) {
-        const count    = await db.incident.count();
         const iKey     = `veh-crash-${deviceCode}-${Date.now()}`;
 
         await db.incident.create({
           data: {
-            incidentNumber:  nextIncidentNumber(count),
+            incidentNumber:  await nextIncidentNumber(),
             idempotencyKey:  iKey,
             title:           `[AUTO] Vehicle Crash Detected — ${deviceCode}`,
             description:     `ESP32 vehicle monitor (${deviceCode}) detected a severe impact.\n` +
