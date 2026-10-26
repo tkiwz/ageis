@@ -92,10 +92,14 @@ interface ChainRow {
 export async function appendAuditLog(data: AuditLogCreateInput): Promise<string> {
   // One writer at a time: a transaction-scoped advisory lock keeps the chain
   // linear under concurrency (works with the pgbouncer transaction pooler).
-  return db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_LOCK_KEY})`;
-    return appendInTx(tx, data);
-  });
+  // Prisma's 2s/5s defaults are too tight for a cold pool or a far-away DB
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_LOCK_KEY})`;
+      return appendInTx(tx, data);
+    },
+    { maxWait: 10_000, timeout: 15_000 },
+  );
 }
 
 /** Caller must already hold the advisory lock. */
@@ -164,7 +168,7 @@ export async function sealAuditChain(userId: string, reason: string) {
       });
       return { sealedCount: count, hash, knownBreak };
     },
-    { timeout: 30_000 },
+    { maxWait: 10_000, timeout: 30_000 },
   );
 }
 

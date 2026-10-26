@@ -62,6 +62,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 const TYPES = ["CHEMICAL", "PHYSICAL", "ELECTRICAL", "FIRE", "ERGONOMIC", "BIOLOGICAL", "PROCESS_SAFETY", "MECHANICAL", "ENVIRONMENTAL", "GENERAL"];
 const RISK_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+const OPEN_PERMIT = ["DRAFT", "PENDING", "SUBMITTED", "IN_REVIEW", "APPROVED", "ACTIVE"];
 
 // ─────────────────────────────────────────────────────────────
 // Page
@@ -87,6 +88,8 @@ export default function RiskAssessmentPage() {
   const [fPermit,   setFPermit]   = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [creating,  setCreating]  = useState(false);
+  const [aiUsed,    setAiUsed]    = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -111,9 +114,10 @@ export default function RiskAssessmentPage() {
   }, []);
 
   const loadPermits = useCallback(async () => {
-    const r = await fetch("/api/permits?status=APPROVED&limit=50");
+    // Open permits only (pending approval or active) — closed ones cannot be linked
+    const r = await fetch("/api/permits?limit=100");
     const j = await r.json();
-    if (j.ok) setPermits(j.data.permits ?? []);
+    if (j.ok) setPermits((j.data.permits ?? []).filter((p: PermitRef) => OPEN_PERMIT.includes(p.status)));
   }, []);
 
   useEffect(() => { loadItems(); loadStats(); }, [loadItems, loadStats]);
@@ -122,19 +126,22 @@ export default function RiskAssessmentPage() {
   async function suggestControls() {
     if (!fHazard) return;
     setAiLoading(true);
+    setFormError(null);
     const r = await fetch("/api/risk-assessments/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hazardDescription: fHazard, type: fType, riskBefore: fBefore }),
     });
     const j = await r.json();
-    if (j.ok) { setFControls(j.data.controlsSuggested); setFAfter(j.data.riskAfter); }
+    if (j.ok) { setFControls(j.data.controlsSuggested); setFAfter(j.data.riskAfter); setAiUsed(true); }
+    else setFormError(j.error?.message ?? "AI suggestion failed");
     setAiLoading(false);
   }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setCreating(true);
+    setFormError(null);
     const r = await fetch("/api/risk-assessments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -142,26 +149,30 @@ export default function RiskAssessmentPage() {
         title: fTitle, type: fType, hazardDescription: fHazard,
         riskBefore: fBefore, controlsSuggested: fControls, riskAfter: fAfter,
         siteId: fSite || sites[0]?.id,
-        aiSuggested: !!fControls,
+        aiSuggested: aiUsed && !!fControls,
         permitId: fPermit || null,
       }),
     });
     const j = await r.json();
     if (j.ok) { setShowNew(false); resetForm(); await Promise.all([loadItems(), loadStats()]); }
+    else setFormError(j.error?.message ?? "Could not save the assessment");
     setCreating(false);
   }
 
   function resetForm() {
     setFTitle(""); setFType("CHEMICAL"); setFHazard(""); setFBefore("HIGH");
     setFControls(""); setFAfter("LOW"); setFSite(""); setFPermit("");
+    setAiUsed(false); setFormError(null);
   }
 
   async function updateStatus(id: string, status: string) {
-    await fetch("/api/risk-assessments", {
+    const r = await fetch("/api/risk-assessments", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
+    const j = await r.json().catch(() => null);
+    if (!j?.ok) window.alert(j?.error?.message ?? "Update failed");
     await Promise.all([loadItems(), loadStats()]);
   }
 
@@ -249,7 +260,7 @@ export default function RiskAssessmentPage() {
               <div className="sm:col-span-2">
                 <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
                   Controls Suggested
-                  {fControls && <span className="ml-2 text-primary">✓ AI filled</span>}
+                  {aiUsed && fControls && <span className="ml-2 text-primary">✓ AI filled</span>}
                 </label>
                 <textarea value={fControls} onChange={(e) => setFControls(e.target.value)} rows={3}
                   placeholder="Describe the control measures…"
@@ -289,10 +300,13 @@ export default function RiskAssessmentPage() {
                   ))}
                 </select>
                 {permits.length === 0 && (
-                  <p className="mt-1 text-[10px] text-muted-foreground">No approved permits found.</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">No open permits found.</p>
                 )}
               </div>
             </div>
+            {formError && (
+              <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{formError}</p>
+            )}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => { setShowNew(false); resetForm(); }}
                 className="rounded-lg border border-border/50 px-4 py-2 text-sm text-muted-foreground hover:bg-muted">Cancel</button>
@@ -386,7 +400,7 @@ function RiskCard({
           )}
           {/* Permit badge */}
           {ra.permit && (
-            <a href="/operations/permits"
+            <a href={`/operations/permits/${ra.permit.id}`}
               className="rounded border border-primary/30 bg-primary/8 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/15 flex items-center gap-1 transition-colors">
               <Link2 className="h-2.5 w-2.5" /> PTW {ra.permit.permitNumber}
               <ExternalLink className="h-2 w-2 opacity-60" />
@@ -433,7 +447,7 @@ function RiskCard({
               <span className="text-muted-foreground">—</span>
               <span>{ra.permit.title}</span>
               <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-medium ml-auto",
-                ra.permit.status === "APPROVED" ? "bg-green-500/15 text-green-400" : "bg-muted/30 text-muted-foreground"
+                ra.permit.status === "ACTIVE" ? "bg-green-500/15 text-green-400" : "bg-muted/30 text-muted-foreground"
               )}>{ra.permit.status}</span>
             </div>
           </div>
