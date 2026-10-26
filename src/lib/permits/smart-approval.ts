@@ -9,6 +9,7 @@
 import { db } from "@/lib/db";
 import { guardedClaudeChat } from "@/lib/ai/guarded-claude";
 import { getAutonomySettings } from "@/lib/autonomy/settings";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export interface PermitRecommendation {
   recommendation: "APPROVE" | "MODIFY" | "REJECT";
@@ -187,8 +188,7 @@ Respond in this exact JSON shape:
     parsed.confidence >= 0.8;
 
   // Persist recommendation in audit
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "OPERATIONS",
       action: "PERMIT_AI_REVIEWED",
       actionType: "AI_AUTONOMOUS",
@@ -197,8 +197,7 @@ Respond in this exact JSON shape:
       metadata: JSON.stringify({ permitId, recommendation: parsed.recommendation, riskScore: parsed.riskScore, autoApproved, decisionId: r.decisionId }),
       riskLevel: parsed.riskScore >= 70 ? "HIGH" : parsed.riskScore >= 40 ? "MEDIUM" : "LOW",
       siteId: permit.siteId,
-    },
-  });
+    });
 
   // If auto-approve allowed → flip status
   if (autoApproved) {

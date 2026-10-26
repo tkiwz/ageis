@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ok, fail }                  from "@/lib/api-response";
 import { db }                        from "@/lib/db";
 import { requireScopedAuth }         from "@/lib/scoped-auth";
-import { denyUnlessRole } from "@/lib/security/api-guard";
-import { ROLE_GROUPS } from "@/lib/rbac";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,6 +79,13 @@ export async function POST(req: NextRequest) {
   const existing = await db.investigation.findUnique({ where: { incidentId: body.incidentId } });
   if (existing) return fail("CONFLICT", "Investigation already exists for this incident", 409);
 
+  if (body.leadInvestigatorId && body.leadInvestigatorId !== scope.userId) {
+    const lead = await db.user.findUnique({ where: { id: body.leadInvestigatorId }, select: { isActive: true, role: true } });
+    if (!lead?.isActive || !["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER"].includes(lead.role)) {
+      return fail("VALIDATION", "leadInvestigatorId: must be an active HSSE user", 400);
+    }
+  }
+
   const investigation = await db.investigation.create({
     data: {
       incidentId:         body.incidentId,
@@ -94,36 +100,15 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       action:      "INVESTIGATION_OPENED",
       module:      "SAFETY",
       actionType:  "MANUAL",
       description: `Opened investigation for ${incident.incidentNumber}`,
       userId:      scope.userId,
-    },
-  }).catch(() => {});
+    }).catch(() => {});
 
   return ok({ investigation });
 }
 
-export async function PATCH(req: NextRequest) {
-  const denied = await denyUnlessRole(ROLE_GROUPS.SAFETY);
-  if (denied) return denied;
-  const scope = await requireScopedAuth();
-  if (scope instanceof NextResponse) return scope;
-
-  let body: { id: string; status?: string; rootCause?: string; summary?: string; hasAIEvidence?: boolean };
-  try { body = await req.json(); }
-  catch { return fail("INVALID_BODY", "Invalid JSON", 400); }
-  if (!body.id) return fail("MISSING", "id required", 400);
-
-  const data: Record<string, unknown> = {};
-  if (body.status       !== undefined) data.status       = body.status;
-  if (body.rootCause    !== undefined) data.rootCause    = body.rootCause;
-  if (body.summary      !== undefined) data.summary      = body.summary;
-  if (body.hasAIEvidence !== undefined) data.hasAIEvidence = body.hasAIEvidence;
-
-  const updated = await db.investigation.update({ where: { id: body.id }, data });
-  return ok({ investigation: updated });
-}
+// Updates go through PATCH /api/investigations/:id (site-scoped).

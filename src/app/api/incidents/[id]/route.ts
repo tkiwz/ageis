@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
+import { zodMessage } from "@/lib/validations/api";
 import { auth } from "@/auth";
 import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { log } from "@/lib/observability/logger";
 import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,15 +55,18 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 const ALLOWED_ROLES = ["ADMIN", "HSSE_MANAGER", "SAFETY_OFFICER", "SUPERVISOR"] as const;
 
 // Only fields that exist on the Incident model
-const UPDATABLE_FIELDS = [
-  "status",
-  "severity",
-  "assigneeId",
-  "title",
-  "description",
-  "location",
-  "type",
-] as const;
+const incidentPatchSchema = z
+  .object({
+    status: z.enum(["REPORTED", "INVESTIGATING", "ESCALATED", "CONTAINED", "RESOLVED", "CLOSED"]),
+    severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+    assigneeId: z.string().min(1).max(40).nullable(),
+    title: z.string().trim().min(3).max(200),
+    description: z.string().trim().min(3).max(8000),
+    location: z.string().trim().max(300),
+    type: z.string().trim().min(2).max(40),
+  })
+  .partial()
+  .strict();
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -83,22 +89,31 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   });
   if (!existing) return fail("NOT_FOUND", "Incident not found", 404);
 
-  const body = (await req.json()) as Record<string, unknown>;
-
-  // Only allow safe fields
-  const data: Record<string, unknown> = {};
-  for (const key of UPDATABLE_FIELDS) {
-    if (key in body) data[key] = body[key];
-  }
+  const parsed = incidentPatchSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return fail("VALIDATION", zodMessage(parsed.error), 400);
+  const data: Record<string, unknown> = { ...parsed.data };
   if (Object.keys(data).length === 0) {
     return fail("BAD_REQUEST", "No updatable fields provided", 400);
   }
 
-  // Timestamp status transitions
+  // Assignee must be an active user who can work on this incident's site
+  if (parsed.data.assigneeId) {
+    const incidentSite = await db.incident.findUnique({ where: { id }, select: { siteId: true } });
+    const assignee = await db.user.findUnique({ where: { id: parsed.data.assigneeId }, select: { isActive: true, role: true } });
+    const siteOk =
+      assignee && ["ADMIN", "HSSE_MANAGER"].includes(assignee.role)
+        ? true
+        : !!(await db.userSiteAccess.findFirst({ where: { userId: parsed.data.assigneeId, siteId: incidentSite!.siteId }, select: { id: true } }));
+    if (!assignee?.isActive || !siteOk) return fail("VALIDATION", "assigneeId: user can't be assigned to this site", 400);
+  }
+
+  // Timestamp status transitions (reopen clears the resolution time)
   const newStatus = data.status as string | undefined;
   const statusChanged = newStatus && newStatus !== existing.status;
   if (statusChanged && (newStatus === "RESOLVED" || newStatus === "CLOSED")) {
     data.resolvedAt = new Date();
+  } else if (statusChanged && ["RESOLVED", "CLOSED"].includes(existing.status)) {
+    data.resolvedAt = null;
   }
 
   const updated = await db.incident.update({
@@ -115,8 +130,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   });
 
   // Audit log
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "SAFETY",
       action: "INCIDENT_UPDATED",
       actionType: "MANUAL",
@@ -131,8 +145,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       }),
       riskLevel: updated.severity,
       userId: session.user.id,
-    },
-  });
+    });
 
   // ── Brain learning hooks (fire-and-forget, never blocks the response) ──────
   if (statusChanged && (newStatus === "RESOLVED" || newStatus === "CLOSED")) {

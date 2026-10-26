@@ -15,6 +15,7 @@ import { recordOutcome } from "@/lib/brain/learning";
 import { log } from "@/lib/observability/logger";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,8 +86,7 @@ export async function POST(
       },
     });
 
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "AI",
         action: "BRAIN_FEEDBACK",
         actionType: "MANUAL",
@@ -94,8 +94,7 @@ export async function POST(
         description: `Brain session "${brainSession.trigger.slice(0, 80)}" marked ${body.outcome} by ${session.user.name ?? session.user.email}`,
         metadata: JSON.stringify({ sessionId: id, outcome: body.outcome, memoriesUpdated }),
         userId: session.user.id,
-      },
-    });
+      });
 
     log.info("Brain feedback recorded", { sessionId: id, outcome: body.outcome, memoriesUpdated });
 

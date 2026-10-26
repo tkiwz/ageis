@@ -14,6 +14,7 @@ import { claudeChat }                from "@/lib/ai/claude-client";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { aiGuard } from "@/lib/security/ai-guard";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime    = "nodejs";
 export const dynamic    = "force-dynamic";
@@ -143,8 +144,7 @@ Perform a comprehensive root-cause analysis using the 5-Whys methodology. Return
   });
 
   // Audit
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       action:      "AI_INVESTIGATION_ANALYSIS",
       module:      "SAFETY",
       actionType:  "AI_AUTONOMOUS",
@@ -152,8 +152,7 @@ Perform a comprehensive root-cause analysis using the 5-Whys methodology. Return
       description: `AI 5-Whys analysis completed for ${inc.incidentNumber}`,
       userId:      scope.userId,
       metadata:    JSON.stringify({ investigationId: id, riskLevel: analysis.riskLevel }),
-    },
-  }).catch(() => {});
+    }).catch(() => {});
 
   return ok({ analysis });
 }

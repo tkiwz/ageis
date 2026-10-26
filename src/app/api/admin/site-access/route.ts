@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { ok, fail, forbidden, unauthorized } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { grantSiteAccess, revokeSiteAccess } from "@/lib/site-access";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 
@@ -66,8 +67,7 @@ export async function POST(req: NextRequest) {
     shiftEndHour: body.shiftEndHour,
   });
 
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "ADMIN",
       action: "SITE_ACCESS_GRANTED",
       actionType: "MANUAL",
@@ -75,8 +75,7 @@ export async function POST(req: NextRequest) {
       description: `Site access granted: user=${body.userId}, site=${body.siteId}, level=${body.accessLevel ?? "READ"}`,
       metadata: JSON.stringify(body),
       userId: session.user.id,
-    },
-  });
+    });
 
   return ok({ granted: true });
 }
@@ -91,15 +90,13 @@ export async function DELETE(req: NextRequest) {
   if (!userId || !siteId) return fail("MISSING", "userId and siteId required", 400);
 
   await revokeSiteAccess(userId, siteId);
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "ADMIN",
       action: "SITE_ACCESS_REVOKED",
       actionType: "MANUAL",
       isAutonomous: false,
       description: `Site access revoked: user=${userId}, site=${siteId}`,
       userId: session.user.id,
-    },
-  });
+    });
   return ok({ revoked: true });
 }

@@ -7,6 +7,7 @@ import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { denyUnlessSiteVisible } from "@/lib/security/site-guard";
 import { aiGuard } from "@/lib/security/ai-guard";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -203,8 +204,7 @@ If no leak detected, set leakDetected: false, severity: null, and explain in sum
     if (!analysis.leakDetected) {
       // Audit log even for no-leak analysis
       try {
-        await db.auditLog.create({
-          data: {
+        await appendAuditLog({
             module: "PIPELINE",
             action: "PIPELINE_ANALYZED_NO_LEAK",
             actionType: "AI_AUTONOMOUS",
@@ -216,8 +216,7 @@ If no leak detected, set leakDetected: false, severity: null, and explain in sum
               confidence: analysis.confidence,
             }),
             userId: session.user.id ?? null,
-          },
-        });
+          });
       } catch (err) {
         console.error("[Pipeline Analysis] AuditLog failed:", err);
       }
@@ -450,8 +449,7 @@ ${analysis.summary}`;
     // STEP 9: Audit log
     // ═══════════════════════════════════════════════════
     try {
-      await db.auditLog.create({
-        data: {
+      await appendAuditLog({
           module: "PIPELINE",
           action: "LEAK_DETECTED_AI",
           actionType: "AI_AUTONOMOUS",
@@ -480,8 +478,7 @@ ${analysis.summary}`;
           riskLevel: severity,
           siteId,
           userId: session.user.id ?? null,
-        },
-      });
+        });
     } catch (err) {
       console.error("[Pipeline Analysis] AuditLog failed:", err);
     }

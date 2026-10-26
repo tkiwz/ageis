@@ -14,6 +14,7 @@
  *   - Anything currently under investigation
  */
 import { db } from "@/lib/db";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -128,8 +129,7 @@ export async function runRetentionSweep(dryRun = false): Promise<RetentionReport
   }
 
   if (!dryRun) {
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "GOVERNANCE",
         action: "RETENTION_SWEEP",
         actionType: "AI_AUTONOMOUS",
@@ -137,8 +137,7 @@ export async function runRetentionSweep(dryRun = false): Promise<RetentionReport
         description: `Retention sweep: audit=${report.deletedAuditLogs}, voice=${report.deletedVoiceMessages}, wellness=${report.deletedWellnessReadings}, notif=${report.deletedNotifications}, ai=${report.deletedAIDecisions}`,
         metadata: JSON.stringify(report),
         riskLevel: "LOW",
-      },
-    });
+      });
   }
 
   return report;

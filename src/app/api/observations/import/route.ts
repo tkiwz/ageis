@@ -16,6 +16,7 @@ import { claudeChat }   from "@/lib/ai/claude-client";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
 import { aiGuard } from "@/lib/security/ai-guard";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -259,16 +260,14 @@ Be direct, specific, and actionable. Use the data provided.`;
   }
 
   // ── Audit log ─────────────────────────────────────────────
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       action:      "OBSERVATIONS_IMPORTED",
       module:      "SAFETY",
       actionType:  "MANUAL",
       description: `Imported ${imported.length} observations from file: ${file.name}`,
       userId:      reporter.id,
       metadata:    JSON.stringify({ fileName: file.name, imported: imported.length, skipped: skipped.length }),
-    },
-  }).catch(() => {});
+    }).catch(() => {});
 
   return ok({ imported: imported.length, skipped: skipped.length, errors: skipped, analysis });
 }

@@ -14,6 +14,7 @@ import { db } from "@/lib/db";
 import { executeActions } from "@/lib/brain/action-executor";
 import type { RecommendedAction } from "@/lib/brain/types";
 import { log } from "@/lib/observability/logger";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,8 +83,7 @@ export async function POST(
       confidence: brainSession.confidence ?? undefined,
     });
 
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "AI",
         action: "BRAIN_ACTIONS_MANUALLY_EXECUTED",
         actionType: "MANUAL",
@@ -91,8 +91,7 @@ export async function POST(
         description: `Manual execution of ${result.total} actions from brain session "${brainSession.trigger.slice(0, 80)}" — auto: ${result.autoExecuted}, guarded: ${result.guarded}`,
         metadata: JSON.stringify({ sessionId: id, result }),
         userId: session.user.id,
-      },
-    });
+      });
 
     log.info("Brain actions manually executed", {
       sessionId: id,

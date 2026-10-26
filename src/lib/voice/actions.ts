@@ -14,6 +14,7 @@ import { db } from "@/lib/db";
 import { checkAutonomyAllowed } from "@/lib/autonomy/settings";
 import { issueConfirmationToken, verifyConfirmationToken } from "./confirmation-token";
 import type { Role } from "@/lib/constants";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export interface VoiceActionContext {
   userId: string;
@@ -89,15 +90,13 @@ register({
         reporterId: ctx.userId,
       },
     });
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "SAFETY", action: "VOICE_INCIDENT_CREATED",
         actionType: "AI_AUTONOMOUS", isAutonomous: true,
         description: `Voice created incident ${incidentNumber}`,
         metadata: JSON.stringify({ incidentId: incident.id, params }),
         riskLevel: incident.severity, siteId: site.id, userId: ctx.userId,
-      },
-    });
+      });
     return {
       success: true,
       message: `Incident ${incidentNumber} created at ${site.name}.`,
@@ -141,15 +140,13 @@ register({
       where: { id: task.id },
       data: { assigneeId: assignee.id, isAutoAssigned: true },
     });
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "OPERATIONS", action: "VOICE_TASK_ASSIGNED",
         actionType: "AI_AUTONOMOUS", isAutonomous: true,
         description: `Voice assigned "${task.title}" to ${assignee.name}`,
         metadata: JSON.stringify({ taskId: task.id, assigneeId: assignee.id }),
         userId: ctx.userId,
-      },
-    });
+      });
     return {
       success: true,
       message: `Task "${task.title}" assigned to ${assignee.name}.`,
@@ -166,14 +163,12 @@ register({
   requiresConfirmation: false,
   schema: z.object({}).strict(),
   async execute(_params, ctx) {
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "SAFETY", action: "WORKER_SAFE_CHECKIN",
         actionType: "MANUAL", isAutonomous: false,
         description: `Worker safe via voice: ${ctx.email ?? ctx.userId}`,
         userId: ctx.userId,
-      },
-    });
+      });
     return {
       success: true,
       message: "Your safety check-in is recorded. Stay safe.",
@@ -218,15 +213,13 @@ register({
       where: { id: site.id },
       data: { isLockedDown: true, status: "LOCKED_DOWN" },
     });
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "COMMAND", action: "SITE_LOCKED_DOWN",
         actionType: "AI_AUTONOMOUS", isAutonomous: true,
         description: `Voice locked down ${site.code}: ${params.reason}`,
         metadata: JSON.stringify({ siteId: site.id, reason: params.reason }),
         riskLevel: "CRITICAL", siteId: site.id, userId: ctx.userId,
-      },
-    });
+      });
     return {
       success: true,
       message: `Site ${site.code} is now LOCKED DOWN.`,
@@ -258,14 +251,12 @@ register({
         isAutonomous: true,
       },
     });
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "COMMAND", action: "VOICE_DRONE_DISPATCHED",
         actionType: "AI_AUTONOMOUS", isAutonomous: true,
         description: `Drone dispatch to ${params.location}`,
         metadata: JSON.stringify(params), userId: ctx.userId,
-      },
-    });
+      });
     return {
       success: true,
       message: `Drone dispatch requested to ${params.location}.`,
@@ -298,15 +289,13 @@ register({
         siteId: site.id, reportedById: ctx.userId,
       },
     });
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "SAFETY", action: "VOICE_OBSERVATION_CREATED",
         actionType: "AI_AUTONOMOUS", isAutonomous: true,
         description: `Voice created observation ${obs.recordNumber}`,
         metadata: JSON.stringify({ observationId: obs.id }),
         siteId: site.id, userId: ctx.userId,
-      },
-    });
+      });
     return {
       success: true,
       message: `Observation ${obs.recordNumber} recorded.`,

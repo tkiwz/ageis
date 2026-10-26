@@ -11,6 +11,7 @@
  */
 import { db } from "@/lib/db";
 import { guardedClaudeChat } from "@/lib/ai/guarded-claude";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 // Thresholds (calibrated for hot-climate field workers)
 const H2S_ACTION_LEVEL_PPM_MIN = 100;   // OSHA-style cumulative dose
@@ -263,8 +264,7 @@ Respond ONLY in JSON: {"reasoning": "short English explanation, 1-2 sentences", 
     })),
   });
 
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "SAFETY",
       action: "WELLNESS_ALERT_CREATED",
       actionType: "AI_AUTONOMOUS",
@@ -273,8 +273,7 @@ Respond ONLY in JSON: {"reasoning": "short English explanation, 1-2 sentences", 
       metadata: JSON.stringify({ alertId: alert.id, triggers: classification.triggers, exposure }),
       riskLevel: classification.level,
       userId: input.userId,
-    },
-  });
+    });
 
   return {
     readingId: reading.id,

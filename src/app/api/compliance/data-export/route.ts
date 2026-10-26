@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { ok, fail, forbidden, unauthorized } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { exportUserData } from "@/lib/compliance/data-export";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,8 +28,7 @@ export async function GET(req: NextRequest) {
   const payload = await exportUserData(userId);
 
   // Audit the export — Oman PDPL recommends logging every access to personal data.
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "GOVERNANCE",
       action: "USER_DATA_EXPORTED",
       actionType: "MANUAL",
@@ -37,8 +37,7 @@ export async function GET(req: NextRequest) {
       metadata: JSON.stringify({ subjectUserId: userId, requesterId: session.user.id }),
       riskLevel: "MEDIUM",
       userId: session.user.id,
-    },
-  });
+    });
 
   return new Response(JSON.stringify(payload, null, 2), {
     headers: {

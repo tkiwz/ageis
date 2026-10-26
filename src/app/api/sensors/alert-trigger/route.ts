@@ -21,6 +21,7 @@ import { ok, fail }      from "@/lib/api-response";
 import { db }            from "@/lib/db";
 import { denyUnlessRole } from "@/lib/security/api-guard";
 import { ROLE_GROUPS } from "@/lib/rbac";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -144,16 +145,14 @@ export async function POST(req: NextRequest) {
   }).catch(() => {});
 
   // Audit
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       action:      "AUTO_INCIDENT_CREATED",
       module:      "SENSORS",
       actionType:  "AUTONOMOUS",
       description: `Auto-created incident ${incidentNumber} from IoT sensor ${body.sensorCode}`,
       isAutonomous: true,
       metadata:    JSON.stringify({ sensorCode: body.sensorCode, value: body.value, unit: body.unit, alertLevel: body.alertLevel }),
-    },
-  }).catch(() => {});
+    }).catch(() => {});
 
   // WhatsApp
   const waMsg =

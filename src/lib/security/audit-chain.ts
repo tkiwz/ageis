@@ -41,6 +41,8 @@ function computeRowHash(input: {
 }
 
 const GENESIS_HASH = "0".repeat(64);
+/** pg advisory lock id for audit chain writes. */
+const AUDIT_LOCK_KEY = 724001;
 
 interface AuditLogCreateInput {
   module: string;
@@ -58,43 +60,46 @@ interface AuditLogCreateInput {
  * Drop-in replacement for `db.auditLog.create({ data })` that computes the
  * tamper-evident hash chain. Use this everywhere instead of raw create.
  *
- * NOTE: There's a small race window in concurrent inserts — two writers might
- * both read the same prev-hash. In SQLite this rarely matters (single-writer).
- * For Postgres we wrap in a transaction + advisory lock.
+ * Serialized with a Postgres advisory lock inside a transaction.
  */
 export async function appendAuditLog(data: AuditLogCreateInput): Promise<string> {
-  // Find the latest entry to chain from
-  const prev = await db.auditLog.findFirst({
-    orderBy: { createdAt: "desc" },
-    select: { hash: true },
-  });
-  const prevHash = prev?.hash ?? GENESIS_HASH;
+  // One writer at a time: a transaction-scoped advisory lock keeps the chain
+  // linear under concurrency (works with the pgbouncer transaction pooler).
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${AUDIT_LOCK_KEY})`;
 
-  // Create the row first to get its id + final createdAt
-  const row = await db.auditLog.create({
-    data: {
-      ...data,
-      actionType: data.actionType ?? "MANUAL",
-      isAutonomous: data.isAutonomous ?? false,
+    const prev = await tx.auditLog.findFirst({
+      where: { hash: { not: null } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { hash: true },
+    });
+    const prevHash = prev?.hash ?? GENESIS_HASH;
+
+    // Create the row first to get its id + final createdAt
+    const row = await tx.auditLog.create({
+      data: {
+        ...data,
+        actionType: data.actionType ?? "MANUAL",
+        isAutonomous: data.isAutonomous ?? false,
+        prevHash,
+      },
+    });
+
+    const hash = computeRowHash({
+      id: row.id,
+      module: row.module,
+      action: row.action,
+      description: row.description,
+      metadata: row.metadata,
+      userId: row.userId,
+      riskLevel: row.riskLevel,
+      createdAt: row.createdAt,
       prevHash,
-    },
-  });
+    });
 
-  // Compute and back-fill the hash
-  const hash = computeRowHash({
-    id: row.id,
-    module: row.module,
-    action: row.action,
-    description: row.description,
-    metadata: row.metadata,
-    userId: row.userId,
-    riskLevel: row.riskLevel,
-    createdAt: row.createdAt,
-    prevHash,
+    await tx.auditLog.update({ where: { id: row.id }, data: { hash } });
+    return hash;
   });
-
-  await db.auditLog.update({ where: { id: row.id }, data: { hash } });
-  return hash;
 }
 
 export interface ChainVerificationReport {
@@ -120,7 +125,7 @@ export interface ChainVerificationReport {
  */
 export async function verifyAuditChain(): Promise<ChainVerificationReport> {
   const all = await db.auditLog.findMany({
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true, module: true, action: true, description: true, metadata: true,
       userId: true, riskLevel: true, createdAt: true, prevHash: true, hash: true,

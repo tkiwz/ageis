@@ -3,6 +3,7 @@ import { ok, fail } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import { requireScopedAuth } from "@/lib/scoped-auth";
 import { analyzeAutonomously } from "@/lib/autonomy/pipeline-analyzer";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,8 +71,7 @@ export async function PATCH(req: NextRequest) {
         reviewerNotes: body.notes ?? null,
       },
     });
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "INTELLIGENCE",
         action: "AI_SUGGESTION_REJECTED",
         actionType: "MANUAL",
@@ -81,8 +81,7 @@ export async function PATCH(req: NextRequest) {
         riskLevel: "LOW",
         siteId: suggestion.siteId,
         userId: scope.userId,
-      },
-    });
+      });
     return ok({ suggestion: rejected });
   }
 
@@ -109,8 +108,7 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
-    await db.auditLog.create({
-      data: {
+    await appendAuditLog({
         module: "INTELLIGENCE",
         action: "AI_SUGGESTION_APPROVED",
         actionType: "MANUAL",
@@ -120,8 +118,7 @@ export async function PATCH(req: NextRequest) {
         riskLevel: suggestion.severity ?? "MEDIUM",
         siteId: suggestion.siteId,
         userId: scope.userId,
-      },
-    });
+      });
 
     return ok({ suggestion: approved, executed: result });
   }

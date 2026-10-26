@@ -64,6 +64,12 @@ export async function PATCH(
   if (!scope.canSee(existing.incident.siteId)) return fail("NOT_FOUND", "Investigation not found", 404);
 
   const data: Record<string, unknown> = {};
+  if (body.status !== undefined && !["OPEN", "IN_REVIEW", "CLOSED"].includes(body.status)) {
+    return fail("VALIDATION", "status must be OPEN, IN_REVIEW or CLOSED", 400);
+  }
+  if (body.status === "CLOSED" && !(body.rootCause ?? existing.rootCause)?.trim()) {
+    return fail("VALIDATION", "Add the root cause before closing the investigation", 400);
+  }
   if (body.status        !== undefined) data.status        = body.status;
   if (body.rootCause     !== undefined) data.rootCause     = body.rootCause;
   if (body.summary       !== undefined) data.summary       = body.summary;

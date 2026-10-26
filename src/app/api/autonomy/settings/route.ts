@@ -7,6 +7,7 @@ import {
   type AutonomySettingsDTO,
 } from "@/lib/autonomy/settings";
 import { db } from "@/lib/db";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 
@@ -35,8 +36,7 @@ export async function PATCH(req: NextRequest) {
   const updated = await updateAutonomySettings(patch, session.user.id);
 
   // Audit log every autonomy change — critical for compliance.
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "intelligence",
       action: "AUTONOMY_SETTINGS_UPDATED",
       actionType: "MANUAL",
@@ -45,8 +45,7 @@ export async function PATCH(req: NextRequest) {
       metadata: JSON.stringify(patch),
       riskLevel: patch.globalEnabled === false ? "HIGH" : "MEDIUM",
       userId: session.user.id,
-    },
-  });
+    });
 
   return ok(updated);
 }

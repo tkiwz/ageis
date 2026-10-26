@@ -4,6 +4,7 @@ import { ok, fail, unauthorized, forbidden } from "@/lib/api-response";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { checkPasswordStrength } from "@/lib/security/password";
+import { appendAuditLog } from "@/lib/security/audit-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,14 +66,12 @@ export async function POST(req: NextRequest) {
     select: { id: true, email: true, name: true, role: true, department: true, phone: true, isActive: true, createdAt: true },
   });
 
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "ADMIN", action: "USER_CREATED", actionType: "MANUAL", isAutonomous: false,
       description: `User ${user.email} created with role ${user.role}`,
       metadata: JSON.stringify({ targetUserId: user.id }),
       userId: session.user.id, riskLevel: "MEDIUM",
-    },
-  });
+    });
   return ok({ user });
 }
 
@@ -116,13 +115,11 @@ export async function PATCH(req: NextRequest) {
     data: update,
     select: { id: true, email: true, name: true, role: true, isActive: true },
   });
-  await db.auditLog.create({
-    data: {
+  await appendAuditLog({
       module: "ADMIN", action: "USER_UPDATED", actionType: "MANUAL", isAutonomous: false,
       description: `User ${updated.email} updated`,
       metadata: JSON.stringify({ targetUserId: updated.id, fields: Object.keys(update) }),
       userId: session.user.id, riskLevel: "MEDIUM",
-    },
-  });
+    });
   return ok({ user: updated });
 }
