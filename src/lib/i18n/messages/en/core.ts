@@ -194,6 +194,23 @@ export const coreNs = {
     previewNote: "Preview only. No video was created and nothing was charged.",
     costHint: "About ${usd} per video",
   },
+  weather: {
+    title: "Weather at the sites",
+    subtitle: "Live readings, refreshed every 30 minutes",
+    source: "Source: {source}",
+    feelsLike: "Feels {t}°",
+    humidity: "Humidity {n}%",
+    wind: "Wind {n} km/h {dir}",
+    aqi: "AQI {n}",
+    dust: "Dust {n} µg/m³",
+    heat: "Heat stress",
+    dustRisk: "Dust / wind",
+    hottest: "Hottest: {site} {t}°",
+    none: "No weather readings yet.",
+    failed: "Couldn't load weather",
+    showAll: "Show all {n} sites",
+    showLess: "Show fewer",
+  },
 };
 
 export type CoreMessages = DeepString<typeof coreNs>;

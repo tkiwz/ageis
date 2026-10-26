@@ -159,6 +159,15 @@ export const enums = {
     WRITE: "Write",
     ADMIN: "Admin",
   },
+  weatherCondition: {
+    CLEAR: "Clear",
+    PARTLY_CLOUDY: "Partly cloudy",
+    CLOUDY: "Cloudy",
+    FOG: "Fog",
+    DRIZZLE: "Drizzle",
+    RAIN: "Rain",
+    THUNDERSTORM: "Thunderstorm",
+  },
 };
 
 export type EnumMessages = DeepString<typeof enums>;

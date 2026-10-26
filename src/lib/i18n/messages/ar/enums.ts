@@ -158,4 +158,13 @@ export const enums: EnumMessages = {
     WRITE: "كتابة",
     ADMIN: "إدارة",
   },
+  weatherCondition: {
+    CLEAR: "صافٍ",
+    PARTLY_CLOUDY: "غائم جزئياً",
+    CLOUDY: "غائم",
+    FOG: "ضباب",
+    DRIZZLE: "رذاذ",
+    RAIN: "أمطار",
+    THUNDERSTORM: "عواصف رعدية",
+  },
 };

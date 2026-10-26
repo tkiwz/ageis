@@ -575,11 +575,16 @@ model EmergencyEvent {
 model WeatherReading {
   id             String   @id @default(cuid())
   temperature    Float
+  /// Apparent temperature — what heat-stress rules use
+  feelsLike      Float?
   humidity       Float
   windSpeed      Float
   windDirection  String
   condition      String
   aqi            Int
+  /// Dust concentration, µg/m³ (sandstorm indicator)
+  dust           Float?
+  source         String?
   alertTriggered Boolean  @default(false)
   recordedAt     DateTime @default(now())
   siteId         String
