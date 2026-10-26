@@ -1,20 +1,16 @@
 import { requireRole } from "@/lib/auth-helpers";
+import { getT } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/ui/page-header";
 import { UsersClient } from "./users-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminUsersPage() {
   await requireRole(["ADMIN"]);
+  const t = await getT();
   return (
-    <div className="container mx-auto max-w-7xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="font-display text-3xl tracking-tight">User Management</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Create users, assign roles, and grant per-site access.
-          <span className="mx-2 opacity-50">·</span>
-          <span dir="rtl" className="inline-block">إدارة المستخدمين والصلاحيات</span>
-        </p>
-      </div>
+    <div className="container mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <PageHeader title={t("admin.users.title")} description={t("admin.users.subtitle")} />
       <UsersClient />
     </div>
   );

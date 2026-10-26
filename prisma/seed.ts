@@ -9,7 +9,9 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-const SEED_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "102030";
+// No default password: the repo is public, so a built-in one would be a working login for anyone.
+const SEED_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "";
+if (SEED_PASSWORD.length < 12) throw new Error("Set SEED_ADMIN_PASSWORD (12+ characters) before seeding demo users.");
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -512,7 +514,7 @@ async function main() {
     console.log(`   ✓ ${pl.code.padEnd(15)} ${pl.name} (${points.length} pressure points)`);
   }
 
-  console.log(`\n🔑 Password for all users: ${SEED_PASSWORD}`);
+  console.log("Demo users use the password from SEED_ADMIN_PASSWORD.");
   console.log("\n✅ Seeding complete!\n");
 }
 

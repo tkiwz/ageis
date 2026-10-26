@@ -9,8 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ShieldOff, ShieldCheck, AlertTriangle, DollarSign, Gauge, Loader2, Zap, PlayCircle } from "lucide-react";
-import { playSound } from "@/lib/sound";
 import type { AutonomySettingsDTO } from "@/lib/autonomy/settings";
+import { useI18n } from "@/lib/i18n/client";
 
 interface BudgetView {
   dailyUsedUsd: number;
@@ -38,6 +38,7 @@ interface Props {
 }
 
 export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) {
+  const { t } = useI18n();
   const [settings, setSettings] = useState(initialSettings);
   const [budget, setBudget] = useState(initialBudget);
   const [pending, startTransition] = useTransition();
@@ -58,7 +59,7 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
         });
         const json = await res.json();
         if (!json.ok) {
-          setError(json.error?.message ?? "Update failed");
+          setError(json.error?.message ?? t("admin.autonomy.failed"));
           setSettings(settings); // revert
           return;
         }
@@ -66,7 +67,7 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Network error");
+        setError(err instanceof Error ? err.message : t("admin.autonomy.network"));
         setSettings(settings);
       }
     });
@@ -90,24 +91,26 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
       if (!json.ok) throw new Error(json.error?.message ?? "Tick failed");
       const d = json.data;
       if (d.blocked) {
-        setDemoLog(`Blocked: ${d.blocked}`);
+        setDemoLog(t("admin.autonomy.tickBlocked", { reason: String(d.blocked) }));
       } else {
         const detected = (d.analyzed ?? []).filter((a: { result?: { leakDetected?: boolean } }) => a.result?.leakDetected).length;
-        setDemoLog(
-          `Scanned ${d.scanned} pipelines · ${d.hits.length} suspicious · analyzed ${d.analyzed?.length ?? 0} · leaks detected ${detected}`,
-        );
+        setDemoLog(t("admin.autonomy.tickResult", {
+          scanned: d.scanned, hits: d.hits.length, analyzed: d.analyzed?.length ?? 0, leaks: detected,
+        }));
       }
       refreshBudget();
     } catch (err) {
-      setDemoLog(err instanceof Error ? err.message : "Failed");
+      setDemoLog(err instanceof Error ? err.message : t("admin.autonomy.failed"));
     } finally {
       setDemoBusy(null);
     }
   }
 
 
-  const dailyPct = Math.min(100, (budget.dailyUsedUsd / budget.dailyLimitUsd) * 100);
-  const monthlyPct = Math.min(100, (budget.monthlyUsedUsd / budget.monthlyLimitUsd) * 100);
+  // A 0 limit means "no AI spend allowed" — show it full rather than NaN
+  const pctOf = (used: number, limit: number) => (limit > 0 ? Math.min(100, (used / limit) * 100) : 100);
+  const dailyPct = pctOf(budget.dailyUsedUsd, budget.dailyLimitUsd);
+  const monthlyPct = pctOf(budget.monthlyUsedUsd, budget.monthlyLimitUsd);
   const dailyColor = dailyPct >= 90 ? "bg-destructive" : dailyPct >= 70 ? "bg-risk-medium" : "bg-primary";
   const monthlyColor = monthlyPct >= 90 ? "bg-destructive" : monthlyPct >= 70 ? "bg-risk-medium" : "bg-primary";
 
@@ -124,14 +127,8 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
                 <ShieldOff className="mt-1 h-6 w-6 text-destructive" />
               )}
               <div>
-                <CardTitle className="text-xl">Master Autonomy</CardTitle>
-                <CardDescription>
-                  Single switch that halts ALL autonomous actions across the platform.
-                  <br />
-                  <span dir="rtl" className="inline-block text-xs">
-                    مفتاح رئيسي يوقف جميع الإجراءات الذاتية فوراً
-                  </span>
-                </CardDescription>
+                <CardTitle className="text-xl">{t("admin.autonomy.master")}</CardTitle>
+                <CardDescription>{t("admin.autonomy.masterDesc")}</CardDescription>
               </div>
             </div>
             <Switch
@@ -145,10 +142,8 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
           <CardContent>
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Autonomy disabled</AlertTitle>
-              <AlertDescription>
-                All autonomous decisions are paused. Monitoring continues; nothing is auto-executed.
-              </AlertDescription>
+              <AlertTitle>{t("admin.autonomy.offTitle")}</AlertTitle>
+              <AlertDescription>{t("admin.autonomy.offDesc")}</AlertDescription>
             </Alert>
           </CardContent>
         )}
@@ -159,10 +154,8 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <CardTitle className="text-base">Manual Mode</CardTitle>
-              <CardDescription>
-                Pauses background automation. Only manual triggers run.
-              </CardDescription>
+              <CardTitle className="text-base">{t("admin.autonomy.manual")}</CardTitle>
+              <CardDescription>{t("admin.autonomy.manualDesc")}</CardDescription>
             </div>
             <Switch
               checked={settings.demoMode}
@@ -176,50 +169,50 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
       {/* Per-module switches */}
       <Card className="glass">
         <CardHeader>
-          <CardTitle className="text-base">Module Gates</CardTitle>
-          <CardDescription>Granular control per AI feature.</CardDescription>
+          <CardTitle className="text-base">{t("admin.autonomy.gates")}</CardTitle>
+          <CardDescription>{t("admin.autonomy.gatesDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <ModuleToggle
-            label="Pipeline Monitoring Loop"
-            description="Background scan every N seconds for pressure anomalies."
+            label={t("admin.autonomy.pipelineLoop")}
+            description={t("admin.autonomy.pipelineLoopDesc")}
             value={settings.pipelineLoopEnabled}
             onChange={(v) => patch({ pipelineLoopEnabled: v })}
             disabled={pending || !settings.globalEnabled}
           />
           <ModuleToggle
-            label="Predictive Forecast"
-            description="Daily morning forecast card on dashboard."
+            label={t("admin.autonomy.forecast")}
+            description={t("admin.autonomy.forecastDesc")}
             value={settings.forecastEnabled}
             onChange={(v) => patch({ forecastEnabled: v })}
             disabled={pending || !settings.globalEnabled}
           />
           <ModuleToggle
-            label="Voice Actions"
-            description="Voice commands can execute DB mutations (create incident, assign task, ...)."
+            label={t("admin.autonomy.voice")}
+            description={t("admin.autonomy.voiceDesc")}
             value={settings.voiceActionsEnabled}
             onChange={(v) => patch({ voiceActionsEnabled: v })}
             disabled={pending || !settings.globalEnabled}
           />
           <ModuleToggle
-            label="Vision Auto-Actions"
-            description="ESP32/Pi vision detections trigger autonomous alerts."
+            label={t("admin.autonomy.vision")}
+            description={t("admin.autonomy.visionDesc")}
             value={settings.visionAutoActions}
             onChange={(v) => patch({ visionAutoActions: v })}
             disabled={pending || !settings.globalEnabled}
           />
           <ModuleToggle
-            label="Permit Auto-Approval"
-            description="AEGIS auto-approves low-risk permits. OFF by default."
+            label={t("admin.autonomy.permitAuto")}
+            description={t("admin.autonomy.permitAutoDesc")}
             value={settings.permitAutoApproval}
             onChange={(v) => patch({ permitAutoApproval: v })}
             disabled={pending || !settings.globalEnabled}
             highlight
           />
 
-          <div className="grid grid-cols-2 gap-4 border-t border-border/40 pt-4">
+          <div className="grid gap-4 border-t border-border/40 pt-4 sm:grid-cols-2">
             <div className="space-y-1">
-              <Label htmlFor="pollSeconds">Pipeline Poll Cadence (seconds)</Label>
+              <Label htmlFor="pollSeconds">{t("admin.autonomy.pollSeconds")}</Label>
               <Input
                 id="pollSeconds"
                 type="number"
@@ -240,31 +233,31 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <DollarSign className="h-4 w-4" /> AI Budget
+              <DollarSign className="h-4 w-4" /> {t("admin.autonomy.budget")}
             </CardTitle>
-            <CardDescription>Track Claude/Gemini spend and rate limits.</CardDescription>
+            <CardDescription>{t("admin.autonomy.budgetDesc")}</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={refreshBudget}>Refresh</Button>
+          <Button variant="outline" size="sm" onClick={refreshBudget}>{t("admin.autonomy.refresh")}</Button>
         </CardHeader>
         <CardContent className="space-y-4">
           <Meter
-            label="Today"
+            label={t("admin.autonomy.today")}
             used={budget.dailyUsedUsd}
             limit={budget.dailyLimitUsd}
             pct={dailyPct}
             color={dailyColor}
           />
           <Meter
-            label="This Month"
+            label={t("admin.autonomy.thisMonth")}
             used={budget.monthlyUsedUsd}
             limit={budget.monthlyLimitUsd}
             pct={monthlyPct}
             color={monthlyColor}
           />
 
-          <div className="grid grid-cols-2 gap-4 pt-2">
+          <div className="grid gap-4 pt-2 sm:grid-cols-2">
             <div className="space-y-1">
-              <Label htmlFor="dailyBudget">Daily limit (USD)</Label>
+              <Label htmlFor="dailyBudget">{t("admin.autonomy.dailyLimit")}</Label>
               <Input
                 id="dailyBudget"
                 type="number"
@@ -277,7 +270,7 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="monthlyBudget">Monthly limit (USD)</Label>
+              <Label htmlFor="monthlyBudget">{t("admin.autonomy.monthlyLimit")}</Label>
               <Input
                 id="monthlyBudget"
                 type="number"
@@ -290,7 +283,7 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="rpm">Max calls / minute</Label>
+              <Label htmlFor="rpm">{t("admin.autonomy.perMinute")}</Label>
               <Input
                 id="rpm"
                 type="number"
@@ -302,7 +295,7 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="rph">Max calls / hour</Label>
+              <Label htmlFor="rph">{t("admin.autonomy.perHour")}</Label>
               <Input
                 id="rph"
                 type="number"
@@ -318,24 +311,24 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
           <div className="flex items-center gap-4 border-t border-border/40 pt-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Gauge className="h-3.5 w-3.5" />
-              {budget.callsLastMinute}/{budget.limitPerMinute} per min
+              {t("admin.autonomy.rateMinute", { used: budget.callsLastMinute, limit: budget.limitPerMinute })}
             </span>
             <span>·</span>
-            <span>{budget.callsLastHour}/{budget.limitPerHour} per hour</span>
+            <span>{t("admin.autonomy.rateHour", { used: budget.callsLastHour, limit: budget.limitPerHour })}</span>
           </div>
 
           {budget.todayByModule.length > 0 && (
             <div className="border-t border-border/40 pt-3">
-              <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Today by module</div>
+              <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">{t("admin.autonomy.byModule")}</div>
               <div className="space-y-1">
                 {budget.todayByModule.map((b) => (
                   <div key={b.module} className="flex items-center justify-between text-sm">
                     <span className="font-mono text-xs">{b.module}</span>
                     <span className="text-muted-foreground">
                       <Badge variant="outline" className="font-mono text-[10px]">
-                        {b.callCount} calls
+                        {t("admin.autonomy.calls", { n: b.callCount })}
                       </Badge>{" "}
-                      ${b.costUsd.toFixed(4)}
+                      <span dir="ltr">${b.costUsd.toFixed(4)}</span>
                     </span>
                   </div>
                 ))}
@@ -349,17 +342,15 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
       <Card className="glass border-primary/30">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4" /> Manual Triggers
+            <Zap className="h-4 w-4" /> {t("admin.autonomy.triggers")}
           </CardTitle>
-          <CardDescription>
-            Run the monitoring loop now. Counts toward the AI budget.
-          </CardDescription>
+          <CardDescription>{t("admin.autonomy.triggersDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Button onClick={runTickNow} disabled={!!demoBusy} variant="outline">
               {demoBusy === "tick" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-              Run Tick Now
+              {t("admin.autonomy.runTick")}
             </Button>
           </div>
           {demoLog && (
@@ -373,7 +364,7 @@ export function AutonomyControlPanel({ initialSettings, initialBudget }: Props) 
       {/* Status row */}
       <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
         {pending && <Loader2 className="h-3 w-3 animate-spin" />}
-        {saved && !pending && <span className="text-risk-low">Saved ✓</span>}
+        {saved && !pending && <span className="text-risk-low">{t("admin.autonomy.saved")}</span>}
         {error && <span className="text-destructive">{error}</span>}
       </div>
     </div>
@@ -410,7 +401,7 @@ function Meter({ label, used, limit, pct, color }: {
     <div className="space-y-1">
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">{label}</span>
-        <span className="font-mono">
+        <span className="font-mono" dir="ltr">
           ${used.toFixed(4)} / ${limit.toFixed(2)}
         </span>
       </div>

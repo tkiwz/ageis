@@ -8,6 +8,22 @@ import {
 } from "@/lib/autonomy/settings";
 import { db } from "@/lib/db";
 import { appendAuditLog } from "@/lib/security/audit-chain";
+import { z } from "zod";
+
+const patchSchema = z.object({
+  globalEnabled: z.boolean(),
+  pipelineLoopEnabled: z.boolean(),
+  forecastEnabled: z.boolean(),
+  voiceActionsEnabled: z.boolean(),
+  permitAutoApproval: z.boolean(),
+  visionAutoActions: z.boolean(),
+  demoMode: z.boolean(),
+  pipelinePollSeconds: z.number().int().min(10).max(3600),
+  dailyBudgetUsd: z.number().min(0).max(1000),
+  monthlyBudgetUsd: z.number().min(0).max(20000),
+  maxCallsPerMinute: z.number().int().min(0).max(600),
+  maxCallsPerHour: z.number().int().min(0).max(20000),
+}).partial().strict();
 
 export const runtime = "nodejs";
 
@@ -26,11 +42,16 @@ export async function PATCH(req: NextRequest) {
     return forbidden("Only ADMIN or HSSE_MANAGER can change autonomy settings");
   }
 
-  let patch: Partial<AutonomySettingsDTO>;
-  try {
-    patch = (await req.json()) as Partial<AutonomySettingsDTO>;
-  } catch {
-    return fail("INVALID_BODY", "Invalid JSON", 400);
+  // Only known settings, with sane ranges (the body was spread straight into the row before)
+  const parsed = patchSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    const f = parsed.error.issues[0];
+    return fail("VALIDATION", `${f?.path.join(".") || "body"}: ${f?.message ?? "invalid"}`, 400);
+  }
+  const patch: Partial<AutonomySettingsDTO> = parsed.data;
+  // Letting AI approve permits on its own is an admin-only decision
+  if (patch.permitAutoApproval === true && session.user.role !== "ADMIN") {
+    return forbidden("Only ADMIN can enable automatic permit approval");
   }
 
   const updated = await updateAutonomySettings(patch, session.user.id);

@@ -58,11 +58,22 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); } catch { return fail("INVALID_BODY", "Invalid JSON", 400); }
 
   if (!body.userId || !body.siteId) return fail("MISSING", "userId and siteId required", 400);
+  if (body.accessLevel && !["READ", "WRITE", "ADMIN"].includes(body.accessLevel)) {
+    return fail("VALIDATION", "accessLevel must be READ, WRITE or ADMIN", 400);
+  }
+  const [user, site] = await Promise.all([
+    db.user.findUnique({ where: { id: body.userId }, select: { id: true, email: true } }),
+    db.site.findUnique({ where: { id: body.siteId }, select: { id: true, code: true } }),
+  ]);
+  if (!user || !site) return fail("NOT_FOUND", "User or site not found", 404);
+  const validFrom = body.validFrom ? new Date(body.validFrom) : undefined;
+  const validUntil = body.validUntil ? new Date(body.validUntil) : undefined;
+  if ((validFrom && isNaN(+validFrom)) || (validUntil && isNaN(+validUntil))) return fail("VALIDATION", "Invalid date", 400);
 
   await grantSiteAccess(body.userId, body.siteId, {
     accessLevel: body.accessLevel,
-    validFrom: body.validFrom ? new Date(body.validFrom) : undefined,
-    validUntil: body.validUntil ? new Date(body.validUntil) : undefined,
+    validFrom,
+    validUntil,
     shiftStartHour: body.shiftStartHour,
     shiftEndHour: body.shiftEndHour,
   });
@@ -72,7 +83,7 @@ export async function POST(req: NextRequest) {
       action: "SITE_ACCESS_GRANTED",
       actionType: "MANUAL",
       isAutonomous: false,
-      description: `Site access granted: user=${body.userId}, site=${body.siteId}, level=${body.accessLevel ?? "READ"}`,
+      description: `Site access granted: ${user.email} → ${site.code} (${body.accessLevel ?? "READ"})`,
       metadata: JSON.stringify(body),
       userId: session.user.id,
     });

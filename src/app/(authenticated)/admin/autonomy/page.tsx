@@ -2,6 +2,8 @@ import { requireRole } from "@/lib/auth-helpers";
 import { getAutonomySettings } from "@/lib/autonomy/settings";
 import { getBudgetStatus } from "@/lib/autonomy/cost-guard";
 import { db } from "@/lib/db";
+import { getT } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/ui/page-header";
 import { AutonomyControlPanel } from "./autonomy-control";
 
 export const dynamic = "force-dynamic";
@@ -35,16 +37,10 @@ export default async function AutonomyPage() {
     })),
   };
 
+  const t = await getT();
   return (
-    <div className="container mx-auto max-w-5xl px-6 py-8">
-      <div className="mb-8">
-        <h1 className="font-display text-3xl tracking-tight">Autonomy Control</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Master kill switch, per-module gates, demo mode, and AI budget guards.
-          <span className="mx-2 opacity-50">·</span>
-          <span dir="rtl" className="inline-block">التحكم في الاستقلالية ومراقبة التكلفة</span>
-        </p>
-      </div>
+    <div className="container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <PageHeader title={t("admin.autonomy.title")} description={t("admin.autonomy.subtitle")} />
       <AutonomyControlPanel initialSettings={settings} initialBudget={budget} />
     </div>
   );

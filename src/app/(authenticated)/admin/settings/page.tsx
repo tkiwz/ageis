@@ -1,79 +1,60 @@
 import { requireRole } from "@/lib/auth-helpers";
+import { getT } from "@/lib/i18n/server";
+import type { MessageKey } from "@/lib/i18n/translate";
+import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings, Shield, ServerCog, Database, FileText, Brain } from "lucide-react";
+import { Settings, Shield, ServerCog, Database, FileText, Brain, Lock } from "lucide-react";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSettingsPage() {
   const user = await requireRole(["ADMIN"]);
+  const t = await getT();
+  const c = (k: string) => t(`admin.settings.cards.${k}` as MessageKey);
+  const commit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
+
   return (
-    <div className="container mx-auto max-w-5xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="font-display text-3xl tracking-tight flex items-center gap-2">
-          <Settings className="h-7 w-7" /> System Settings
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Configure the platform. Most operational toggles live in Autonomy Control.
-          <span className="mx-2 opacity-50">·</span>
-          <span dir="rtl" className="inline-block">إعدادات النظام</span>
-        </p>
-      </div>
+    <div className="container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <PageHeader title={t("admin.settings.title")} description={t("admin.settings.subtitle")} />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <SettingCard
-          href="/admin/autonomy"
-          icon={Shield}
-          title="Autonomy Control"
-          desc="Kill switch, demo mode, per-module gates, AI budget caps"
-        />
-        <SettingCard
-          href="/admin/users"
-          icon={ServerCog}
-          title="Users & Roles"
-          desc="Manage user accounts, roles, and per-site access grants"
-        />
-        <SettingCard
-          href="/intelligence/audit"
-          icon={Brain}
-          title="AI Audit Log"
-          desc="Every AI decision, with reasoning and confidence scores"
-        />
-        <SettingCard
-          href="/intelligence/suggestions"
-          icon={Brain}
-          title="AI Suggestions"
-          desc="Low-confidence AI proposals awaiting human review"
-        />
-        <SettingCard
-          href="/governance/privacy"
-          icon={FileText}
-          title="Privacy & Compliance"
-          desc="PDPL data exports, retention policy, ISO 45001 alignment"
-        />
-        <SettingCard
-          href="/admin/alerts"
-          icon={Database}
-          title="System Alerts"
-          desc="All alerts dispatched across channels"
-        />
+        <SettingCard href="/admin/autonomy" icon={Shield} title={c("autonomy")} desc={c("autonomyDesc")} />
+        <SettingCard href="/admin/users" icon={ServerCog} title={c("users")} desc={c("usersDesc")} />
+        <SettingCard href="/admin/security" icon={Lock} title={c("security")} desc={c("securityDesc")} />
+        <SettingCard href="/admin/alerts" icon={Database} title={c("alerts")} desc={c("alertsDesc")} />
+        <SettingCard href="/intelligence/audit" icon={Brain} title={c("aiAudit")} desc={c("aiAuditDesc")} />
+        <SettingCard href="/intelligence/suggestions" icon={Brain} title={c("aiSuggestions")} desc={c("aiSuggestionsDesc")} />
+        <SettingCard href="/governance/privacy" icon={FileText} title={c("privacy")} desc={c("privacyDesc")} />
       </div>
 
-      <Card className="glass mt-6">
+      <Card className="glass">
         <CardHeader>
-          <CardTitle className="text-base">System Info</CardTitle>
-          <CardDescription>Environment, version, and runtime details</CardDescription>
+          <CardTitle className="text-base">{t("admin.settings.info.title")}</CardTitle>
+          <CardDescription>{t("admin.settings.info.subtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-muted-foreground">Platform</dt>
+            <dt className="text-muted-foreground">{t("admin.settings.info.platform")}</dt>
             <dd className="font-mono">AEGIS</dd>
-            <dt className="text-muted-foreground">Signed in as</dt>
-            <dd className="font-mono">{user.email}</dd>
-            <dt className="text-muted-foreground">Role</dt>
-            <dd className="font-mono">{user.role}</dd>
-            <dt className="text-muted-foreground">Environment</dt>
-            <dd className="font-mono">{process.env.NODE_ENV}</dd>
+            <dt className="text-muted-foreground">{t("admin.settings.info.signedInAs")}</dt>
+            <dd className="font-mono" dir="ltr">{user.email}</dd>
+            <dt className="text-muted-foreground">{t("admin.settings.info.role")}</dt>
+            <dd>{t(`roles.${user.role}`)}</dd>
+            <dt className="text-muted-foreground">{t("admin.settings.info.environment")}</dt>
+            <dd className="font-mono">{process.env.VERCEL_ENV ?? process.env.NODE_ENV}</dd>
+            {process.env.VERCEL_REGION && (
+              <>
+                <dt className="text-muted-foreground">{t("admin.settings.info.region")}</dt>
+                <dd className="font-mono">{process.env.VERCEL_REGION}</dd>
+              </>
+            )}
+            {commit && (
+              <>
+                <dt className="text-muted-foreground">{t("admin.settings.info.version")}</dt>
+                <dd className="font-mono">{commit}</dd>
+              </>
+            )}
           </dl>
         </CardContent>
       </Card>
@@ -86,7 +67,7 @@ function SettingCard({ href, icon: Icon, title, desc }: {
 }) {
   return (
     <Link href={href}>
-      <Card className="glass transition-colors hover:bg-card/70">
+      <Card className="glass h-full transition-colors hover:bg-card/70">
         <CardContent className="flex items-start gap-3 p-4">
           <div className="rounded-md border border-primary/20 bg-primary/10 p-2">
             <Icon className="h-5 w-5 text-primary" />

@@ -8,8 +8,29 @@ import { checkLoginAllowed, recordLoginResult, extractIp } from "@/lib/security/
 import { appendAuditLog } from "@/lib/security/audit-chain";
 import type { Role } from "@/lib/constants";
 
+/** How often a live session re-checks that its account is still active (and its role). */
+const RECHECK_MS = 5 * 60_000;
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+    // Node runtime only (the edge middleware keeps the plain callback): a
+    // disabled account or a changed role takes effect within RECHECK_MS
+    // instead of when the JWT expires.
+    async jwt(params) {
+      const token = authConfig.callbacks.jwt(params);
+      if (params.user) { token.checkedAt = Date.now(); return token; }
+      const checkedAt = typeof token.checkedAt === "number" ? token.checkedAt : 0;
+      if (token.id && Date.now() - checkedAt > RECHECK_MS) {
+        const u = await db.user.findUnique({ where: { id: token.id as string }, select: { isActive: true, role: true } });
+        if (!u || !u.isActive) return null;            // ends the session
+        token.role = u.role as Role;
+        token.checkedAt = Date.now();
+      }
+      return token;
+    },
+  },
   // 1-hour session — short window mitigates stolen-token blast radius
   session: { strategy: "jwt", maxAge: 60 * 60 },
   providers: [

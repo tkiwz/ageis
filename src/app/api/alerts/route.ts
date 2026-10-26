@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (!session?.user) return fail("UNAUTHORIZED", "Sign in required", 401);
 
   const url = new URL(req.url);
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20"), 100);
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 1), 100);
 
   const scope = await requireScopedAuth();
   if (scope instanceof Response) return scope;
@@ -83,6 +83,13 @@ export async function POST(req: NextRequest) {
   const parsed = alertCreateSchema.safeParse(body);
   if (!parsed.success) return fail("VALIDATION", zodMessage(parsed.error), 400);
   body = parsed.data;
+
+  // Can't raise alerts on a site outside the caller's scope
+  if (body.siteId) {
+    const scope = await requireScopedAuth();
+    if (scope instanceof Response) return scope;
+    if (!scope.unrestricted && !scope.canSee(body.siteId)) return fail("NOT_FOUND", "Site not found", 404);
+  }
 
   const alert = await db.alert.create({
     data: {
