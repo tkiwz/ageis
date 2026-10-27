@@ -73,10 +73,15 @@ interface Props {
   myPos?: { lat: number; lon: number } | null;
   /** Rain cells to draw on the rain layer, with a label for where each starts */
   tracks?: { track: RainTrack; startLabel: string }[];
+  /** Live satellite instead of the forecast: WMS layer name, frame times, the one shown */
+  satellite?: { wms: string; times: string[]; frame: number } | null;
 }
 
+const EUMETSAT_WMS = "https://view.eumetsat.int/geoserver/wms";
+
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks } = props;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite } = props;
+  const showForecast = mode === "layers" && !satellite;
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const tiles = useRef<{ base: L.TileLayer; labels: L.TileLayer } | null>(null);
@@ -87,12 +92,13 @@ export function WeatherMap(props: Props) {
   const me = useRef<L.CircleMarker | null>(null);
   const symbols = useRef<L.LayerGroup | null>(null);
   const trackLayer = useRef<L.LayerGroup | null>(null);
+  const satFrames = useRef<{ key: string; layers: L.TileLayer.WMS[] } | null>(null);
   const readout = useRef<HTMLDivElement>(null);
   const [zoomTick, setZoomTick] = useState(0);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
   const frame = useMemo<Frame>(() => frameOf(grid, layer, step), [grid, layer, step]);
-  const live = useRef({ frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr });
-  live.current = { frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr };
+  const live = useRef({ frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite });
+  live.current = { frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite };
 
   // ── Create the map once ───────────────────────────────────
   useEffect(() => {
@@ -132,6 +138,7 @@ export function WeatherMap(props: Props) {
       if (!el) return;
       const { frame: fr, layer: ly, mode: md, levels: lv, formatValue: fmt, levelLabel: ll, isAr: ar } = live.current;
       let text: string | null = null;
+      if (live.current.sat) { el.style.opacity = "0"; return; } // satellite pictures have no values to read out
       if (md === "layers") {
         if (ly === "wind") {
           const u = sample(grid, fr.u, e.latlng.lat, e.latlng.lng), v = sample(grid, fr.v, e.latlng.lat, e.latlng.lng);
@@ -163,7 +170,7 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -188,20 +195,20 @@ export function WeatherMap(props: Props) {
   useEffect(() => {
     const m = map.current;
     if (!m || !canvas) return;
-    if (mode !== "layers") { overlay.current?.remove(); overlay.current = null; return; }
+    if (!showForecast) { overlay.current?.remove(); overlay.current = null; return; }
     renderFrame(canvas, grid, layer, frame, LAND, dark);
     const url = canvas.toDataURL("image/png");
     const bounds = L.latLngBounds([grid.grid.lat0, grid.grid.lon0], [grid.grid.lat1, grid.grid.lon1]);
     if (overlay.current) overlay.current.setUrl(url);
     else overlay.current = L.imageOverlay(url, bounds, { opacity: 1, interactive: false, className: "obs-raster" }).addTo(m);
-  }, [canvas, grid, layer, frame, mode, dark]);
+  }, [canvas, grid, layer, frame, showForecast, dark]);
 
   // ── Town weather symbols (layers mode) ─────────────────────
   useEffect(() => {
     const m = map.current, grp = symbols.current;
     if (!m || !grp) return;
     grp.clearLayers();
-    if (mode !== "layers") return;
+    if (!showForecast) return;
     const all = m.getZoom() >= 7.5;
     const placed: L.Point[] = [];
     for (const w of BY_PRIORITY) {
@@ -219,14 +226,14 @@ export function WeatherMap(props: Props) {
         icon: L.divIcon({ className: "obs-sym-wrap", html, iconSize: [64, all ? 40 : 26], iconAnchor: [32, 13] }),
       }).addTo(grp);
     }
-  }, [grid, step, mode, isAr, zoomTick]);
+  }, [grid, step, showForecast, isAr, zoomTick]);
 
   // ── Rain cells: where they form, where they go ───────────────
   useEffect(() => {
     const grp = trackLayer.current;
     if (!grp) return;
     grp.clearLayers();
-    if (mode !== "layers" || layer !== "rain" || !tracks) return;
+    if (!showForecast || layer !== "rain" || !tracks) return;
     const colour = dark ? "#9cc9ff" : "#2f6fbf";
     for (const { track, startLabel } of tracks) {
       const pts = track.steps.map((s) => L.latLng(s.lat, s.lon));
@@ -255,7 +262,34 @@ export function WeatherMap(props: Props) {
         }).addTo(grp);
       }
     }
-  }, [tracks, mode, layer, step, dark]);
+  }, [tracks, showForecast, layer, step, dark]);
+
+  // ── Satellite: one WMS layer per frame, created when first shown and kept (hidden) for replay ──
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const key = satellite?.wms ?? "";
+    if (satFrames.current && (satFrames.current.key !== key || !satellite)) {
+      satFrames.current.layers.forEach((l) => l.remove());
+      satFrames.current = null;
+    }
+    if (!satellite) return;
+    satFrames.current ??= { key, layers: [] };
+    const cache = satFrames.current;
+    const time = satellite.times[satellite.frame];
+    let current = cache.layers.find((l) => (l.wmsParams as { TIME?: string }).TIME === time);
+    if (!current) {
+      current = L.tileLayer.wms(EUMETSAT_WMS, {
+        layers: satellite.wms, format: "image/png", transparent: true, version: "1.3.0",
+        attribution: "EUMETSAT", opacity: 0, TIME: time, maxZoom: 10,
+      } as L.WMSOptions & { TIME: string }).addTo(m);
+      cache.layers.push(current);
+    }
+    // Keep the previous picture until the new one has loaded, so playback doesn't flash
+    const show = current;
+    const reveal = () => cache.layers.forEach((l) => l.setOpacity(l === show ? 0.92 : 0));
+    if ((show as unknown as { _loading?: boolean })._loading) show.once("load", reveal); else reveal();
+  }, [satellite]);
 
   // "My location": a calm dot, and the map moves there
   useEffect(() => {
@@ -277,8 +311,8 @@ export function WeatherMap(props: Props) {
 
   // ── Wind particles only on the wind layer ─────────────────
   useEffect(() => {
-    particles.current?.setActive(mode === "layers" && layer === "wind");
-  }, [mode, layer]);
+    particles.current?.setActive(showForecast && layer === "wind");
+  }, [showForecast, layer]);
 
   // ── Governorate styling ───────────────────────────────────
   function styleGovs() {

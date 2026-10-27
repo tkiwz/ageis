@@ -212,6 +212,24 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    sat: {
+      layer: "Satellite",
+      title: "Live satellite images",
+      source: "Meteosat · EUMETSAT, every 15 minutes",
+      ago: "{n} min ago",
+      products: {
+        natural: "True colour",
+        dust: "Dust",
+        storms: "Storm clouds",
+        infrared: "Infrared (night)",
+      },
+      explain: {
+        natural: "White = clouds · brown = desert · dark = sea. Daylight only.",
+        dust: "Pink / magenta = dust in the air · dark red = thick high cloud.",
+        storms: "Bright yellow = towering storm clouds that can bring heavy rain.",
+        infrared: "Brighter white = colder, higher cloud (rain more likely). Works day and night.",
+      },
+    },
     tracks: {
       title: "Where rain forms and where it goes",
       none: "No rain cells in the next 7 days.",

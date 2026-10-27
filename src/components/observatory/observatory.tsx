@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
-  CalendarDays, Cloud, CloudFog, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
+  CalendarDays, Cloud, CloudFog, Satellite, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
   ShieldCheck, Thermometer, Wind, X, type LucideIcon,
 } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
@@ -43,6 +43,12 @@ const GOV_NAMES = Object.fromEntries(
     .map((f) => [f.properties.iso, f.properties]),
 );
 const REFRESH_MS = 30 * 60_000;
+const SAT_FRAMES = 12;
+type SatProduct = "natural" | "dust" | "storms" | "infrared";
+/** EUMETSAT layers for Meteosat over the Indian Ocean (IODC), which covers Oman. */
+const SAT_WMS: Record<SatProduct, string> = {
+  natural: "msg_iodc:rgb_naturalenhncd", dust: "msg_iodc:rgb_dust", storms: "msg_iodc:rgb_convection", infrared: "msg_iodc:ir108",
+};
 const omanDay = (iso: string) => new Date(Date.parse(iso) + 4 * 3600_000).toISOString().slice(0, 10);
 const noonOf = (day: string) => `${day}T08:00:00Z`; // 12:00 in Oman
 
@@ -57,7 +63,23 @@ export function Observatory() {
 
   const [tab, setTab] = useState<Tab>("layers");
   const mode: MapMode = tab === "warnings" ? "warnings" : "layers";
-  const [layer, setLayer] = useState<LayerId>("temp");
+  const [layer, setLayer] = useState<LayerId | "sat">("temp");
+  const [satProduct, setSatProduct] = useState<SatProduct>("natural");
+  const [satFrame, setSatFrame] = useState(SAT_FRAMES - 1);
+  const [satPlaying, setSatPlaying] = useState(false);
+  const [satTimes, setSatTimes] = useState<string[]>([]);
+  useEffect(() => {
+    if (layer !== "sat") return;
+    // Last 3 hours at 15-minute steps, ending ~30 min ago (images take time to arrive)
+    const end = Math.floor((Date.now() - 30 * 60_000) / (15 * 60_000)) * 15 * 60_000;
+    setSatTimes(Array.from({ length: SAT_FRAMES }, (_, k) => new Date(end - (SAT_FRAMES - 1 - k) * 15 * 60_000).toISOString()));
+    setSatFrame(SAT_FRAMES - 1);
+  }, [layer, satProduct]);
+  useEffect(() => {
+    if (!satPlaying) return;
+    const id = window.setInterval(() => setSatFrame((f) => (f + 1) % SAT_FRAMES), 700);
+    return () => window.clearInterval(id);
+  }, [satPlaying]);
   const [step, setStep] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [dayIdx, setDayIdx] = useState(0);
@@ -220,7 +242,6 @@ export function Observatory() {
           <WeatherMap
             grid={grid}
             mode={mode}
-            layer={layer}
             step={cur}
             dark={dark}
             isAr={isAr}
@@ -231,6 +252,8 @@ export function Observatory() {
             levelLabel={levelLabel}
             myPos={myPos}
             tracks={dayTracks.map((track) => ({ track, startLabel: trackLabel(track) }))}
+            layer={layer === "sat" ? "temp" : layer}
+            satellite={tab === "layers" && layer === "sat" && satTimes.length ? { wms: SAT_WMS[satProduct], times: satTimes, frame: satFrame } : null}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -275,6 +298,13 @@ export function Observatory() {
         {grid && tab === "layers" && (
           <>
             <LayerSwitcher layer={layer} onChange={setLayer} />
+            {layer === "sat" && (
+              <SatPanel
+                product={satProduct} onProduct={setSatProduct}
+                times={satTimes} frame={satFrame} onFrame={(k) => { setSatPlaying(false); setSatFrame(k); }}
+                playing={satPlaying} onTogglePlay={() => setSatPlaying((p) => !p)}
+              />
+            )}
             {layer === "rain" && (
               <RainTracksCard
                 grid={grid}
@@ -283,7 +313,7 @@ export function Observatory() {
                 onPick={(tr) => { setPlaying(false); setStep(tr.steps[0].t); }}
               />
             )}
-            <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
+            {layer !== "sat" && <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
               <Legend layer={layer} dark={dark} />
               <TimeBar
                 times={grid.times} days={days} step={cur} nowStep={nowStep} playing={playing}
@@ -291,7 +321,7 @@ export function Observatory() {
                 onTogglePlay={() => setPlaying((p) => !p)}
                 updatedAt={grid.generatedAt}
               />
-            </div>
+            </div>}
           </>
         )}
 
@@ -306,6 +336,50 @@ export function Observatory() {
           />
         )}
       </main>
+    </div>
+  );
+}
+
+/** Live satellite: which picture, what its colours mean, and the last 3 hours to play. */
+function SatPanel({ product, onProduct, times, frame, onFrame, playing, onTogglePlay }: {
+  product: SatProduct; onProduct: (p: SatProduct) => void; times: string[]; frame: number;
+  onFrame: (k: number) => void; playing: boolean; onTogglePlay: () => void;
+}) {
+  const { t } = useI18n();
+  const f = useFormat();
+  const ago = times[frame] ? Math.max(0, Math.round((Date.now() - Date.parse(times[frame])) / 60_000)) : 0;
+  return (
+    <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-center gap-2 sm:inset-x-5 sm:bottom-5">
+      <div className={cn(PANEL, "pointer-events-auto w-full max-w-4xl space-y-2.5 p-3")}>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Satellite className="h-4 w-4 text-primary" />
+          <span className="me-2 text-sm font-semibold">{t("observatory.sat.title")}</span>
+          {(Object.keys(SAT_WMS) as SatProduct[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => onProduct(p)}
+              aria-pressed={product === p}
+              className={cn("rounded-full border px-2.5 py-1 text-xs transition-colors",
+                product === p ? "border-primary bg-primary/15 font-semibold text-primary" : "border-border/60 text-muted-foreground hover:bg-accent")}
+            >
+              {t(`observatory.sat.products.${p}`)}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs leading-relaxed text-foreground/85">{t(`observatory.sat.explain.${product}`)}</p>
+        <div className="flex items-center gap-2">
+          <Button size="icon" className="h-9 w-9 shrink-0 rounded-full" onClick={onTogglePlay} aria-label={playing ? t("observatory.pause") : t("observatory.play")}>
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </Button>
+          <input type="range" min={0} max={Math.max(0, times.length - 1)} value={frame} onChange={(e) => onFrame(Number(e.target.value))}
+            className="obs-range flex-1 accent-[hsl(var(--primary))]" aria-label={t("observatory.sat.title")} />
+          <div className="w-28 shrink-0 text-end text-xs tabular-nums">
+            <div className="font-semibold">{times[frame] ? f.date(times[frame], { hour: "numeric", minute: "2-digit" }) : "—"}</div>
+            <div className="text-muted-foreground">{t("observatory.sat.ago", { n: f.number(ago) })}</div>
+          </div>
+        </div>
+        <div className="text-[10px] text-muted-foreground">{t("observatory.sat.source")}</div>
+      </div>
     </div>
   );
 }
@@ -432,11 +506,11 @@ function MyPlace({ grid, step, pos, gov, todays, formatValue, onClose }: {
 
 const PANEL = "rounded-xl border border-border/60 bg-background/90 shadow-sm backdrop-blur-md";
 
-function LayerSwitcher({ layer, onChange }: { layer: LayerId; onChange: (l: LayerId) => void }) {
+function LayerSwitcher({ layer, onChange }: { layer: LayerId | "sat"; onChange: (l: LayerId | "sat") => void }) {
   const { t } = useI18n();
   return (
     <div className={cn(PANEL, "absolute start-3 top-3 z-[1000] flex gap-1 p-1 sm:start-5 sm:top-5")} role="radiogroup" aria-label={t("observatory.tabs.map")}>
-      {LAYERS.map(({ id, icon: Icon }) => (
+      {[...LAYERS, { id: "sat" as const, icon: Satellite }].map(({ id, icon: Icon }) => (
         <button
           key={id}
           role="radio"
@@ -449,7 +523,7 @@ function LayerSwitcher({ layer, onChange }: { layer: LayerId; onChange: (l: Laye
         >
           <Icon className="h-4 w-4" />
           {/* Phones: only the chosen layer keeps its label */}
-          <span className={cn(layer !== id && "sr-only sm:not-sr-only")}>{t(`observatory.layers.${id}`)}</span>
+          <span className={cn(layer !== id && "sr-only sm:not-sr-only")}>{id === "sat" ? t("observatory.sat.layer") : t(`observatory.layers.${id}`)}</span>
         </button>
       ))}
     </div>
