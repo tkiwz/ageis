@@ -51,7 +51,8 @@ export function useApi<T>(
 
   useEffect(() => { urlRef.current     = url;     }, [url]);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
-  useEffect(() => () => { mounted.current = false; }, []);
+  // Set back to true on (re)mount: React StrictMode mounts, unmounts and mounts again
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   // Stable fetch function — reads from refs, never recreated ────
   const doFetch = useCallback(async () => {

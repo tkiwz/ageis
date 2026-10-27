@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
-  Cloud, CloudFog, CloudLightning, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
+  CalendarDays, Cloud, CloudFog, CloudLightning, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
   ShieldCheck, Thermometer, Wind, X, type LucideIcon,
 } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
@@ -21,6 +21,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { LEGEND, frameOf, govAt, legendGradient, sample, type GovInfo, type LayerId } from "./field";
 import type { MapMode } from "./weather-map";
+import { ForecastView } from "./forecast-view";
+
+type Tab = MapMode | "forecast";
 
 const WeatherMap = dynamic(() => import("./weather-map").then((m) => m.WeatherMap), {
   ssr: false,
@@ -51,7 +54,8 @@ export function Observatory() {
   useEffect(() => setMounted(true), []);
   const dark = mounted ? resolvedTheme !== "light" : true;
 
-  const [mode, setMode] = useState<MapMode>("layers");
+  const [tab, setTab] = useState<Tab>("layers");
+  const mode: MapMode = tab === "warnings" ? "warnings" : "layers";
   const [layer, setLayer] = useState<LayerId>("temp");
   const [step, setStep] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -150,21 +154,23 @@ export function Observatory() {
           </div>
         </Link>
         <nav className="mx-auto flex rounded-lg bg-muted p-1" aria-label={t("observatory.title")}>
-          {(["layers", "warnings"] as MapMode[]).map((m) => {
-            const Icon = m === "layers" ? MapIcon : ShieldAlert;
+          {(["layers", "warnings", "forecast"] as Tab[]).map((m) => {
+            const Icon = m === "layers" ? MapIcon : m === "warnings" ? ShieldAlert : CalendarDays;
             const count = m === "warnings" ? (warnings.data?.warnings.filter((w) => w.day === warnings.data?.days[0]).length ?? 0) : 0;
             return (
               <button
                 key={m}
-                onClick={() => { setMode(m); setPlaying(false); setSelectedIso(null); }}
-                aria-pressed={mode === m}
+                onClick={() => { setTab(m); setPlaying(false); setSelectedIso(null); }}
+                aria-pressed={tab === m}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3",
-                  mode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  tab === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {t(m === "layers" ? "observatory.tabs.map" : "observatory.tabs.warnings")}
+                <span className={cn(tab !== m && "hidden sm:inline")}>
+                  {t(m === "layers" ? "observatory.tabs.map" : m === "warnings" ? "observatory.tabs.warnings" : "observatory.fc.tab")}
+                </span>
                 {count > 0 && <span className="rounded-full bg-warning/20 px-1.5 text-[10px] font-semibold text-warning tabular-nums">{f.number(count)}</span>}
               </button>
             );
@@ -191,7 +197,14 @@ export function Observatory() {
 
       {/* ── Map area ── */}
       <main className="relative min-h-0 flex-1">
-        {grid ? (
+        {tab === "forecast" ? (
+          <ForecastView
+            warnings={warnings.data?.warnings ?? []}
+            myPos={myPos}
+            onLocate={locate}
+            onShowOnMap={(iso) => { setTab("warnings"); setSelectedIso(iso); }}
+          />
+        ) : grid ? (
           <WeatherMap
             grid={grid}
             mode={mode}
@@ -219,7 +232,7 @@ export function Observatory() {
           </div>
         )}
 
-        {grid && (
+        {grid && tab !== "forecast" && (
           <div
             className={cn(
               "absolute top-3 z-[1000] flex w-64 flex-col items-end gap-2 sm:top-5",
@@ -246,7 +259,7 @@ export function Observatory() {
           </div>
         )}
 
-        {grid && mode === "layers" && (
+        {grid && tab === "layers" && (
           <>
             <LayerSwitcher layer={layer} onChange={setLayer} />
             <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
@@ -261,7 +274,7 @@ export function Observatory() {
           </>
         )}
 
-        {mode === "warnings" && warnings.data && (
+        {tab === "warnings" && warnings.data && (
           <WarningsPanel
             data={warnings.data}
             dayIdx={dayIdx}

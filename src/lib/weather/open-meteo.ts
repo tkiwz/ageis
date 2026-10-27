@@ -7,6 +7,9 @@
  */
 import { db } from "@/lib/db";
 import { log } from "@/lib/observability/logger";
+import { conditionFromCode } from "./conditions";
+
+export { conditionFromCode };
 
 const REFRESH_MS = 30 * 60_000;
 const KEEP_DAYS = 30;
@@ -24,18 +27,6 @@ export const WIND_WARNING_KMH = 45;
 
 let lastAttempt = 0;
 let inflight: Promise<void> | null = null;
-
-/** WMO weather code → condition key (translated in enums.weatherCondition). */
-export function conditionFromCode(code: number): string {
-  if (code === 0) return "CLEAR";
-  if (code <= 2) return "PARTLY_CLOUDY";
-  if (code === 3) return "CLOUDY";
-  if (code === 45 || code === 48) return "FOG";
-  if (code >= 51 && code <= 57) return "DRIZZLE";
-  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return "RAIN";
-  if (code >= 95) return "THUNDERSTORM";
-  return "CLOUDY";
-}
 
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 export const compass = (deg: number) => COMPASS[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
