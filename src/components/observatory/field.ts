@@ -4,6 +4,7 @@
  * over the grid bounds without distortion.
  */
 import type { ForecastGrid } from "@/lib/observatory/grid";
+import governorates from "@/lib/observatory/oman-governorates.json";
 
 export type LayerId = "temp" | "rain" | "wind" | "cloud";
 export type RGBA = [number, number, number, number];
@@ -174,4 +175,26 @@ export function legendGradient(layer: LayerId, dark: boolean) {
     }
   }
   return `linear-gradient(to right, ${stops.join(", ")})`;
+}
+
+// ── Governorates (client side) ──────────────────────────────
+export interface GovInfo { iso: string; name: string; nameAr: string }
+type GovGeom = { type: "Polygon"; coordinates: number[][][] } | { type: "MultiPolygon"; coordinates: number[][][][] };
+export const GOV_FEATURES = (governorates as unknown as { features: { properties: GovInfo; geometry: GovGeom }[] }).features;
+
+function inRing(lon: number, lat: number, ring: number[][]) {
+  let inside = false;
+  for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+    const [xa, ya] = ring[a], [xb, yb] = ring[b];
+    if (ya > lat !== yb > lat && lon < ((xb - xa) * (lat - ya)) / (yb - ya) + xa) inside = !inside;
+  }
+  return inside;
+}
+export function inGovernorate(g: GovGeom, lon: number, lat: number) {
+  const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  return polys.some(([outer, ...holes]) => inRing(lon, lat, outer) && !holes.some((h) => inRing(lon, lat, h)));
+}
+/** Governorate under a point, or null (sea / outside Oman). */
+export function govAt(lat: number, lon: number): GovInfo | null {
+  return GOV_FEATURES.find((f) => inGovernorate(f.geometry, lon, lat))?.properties ?? null;
 }

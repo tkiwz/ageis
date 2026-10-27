@@ -6,8 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
-  Cloud, CloudFog, CloudLightning, CloudRain, Loader2, Map as MapIcon, Pause, Play, RefreshCw, ShieldAlert, ShieldCheck,
-  Thermometer, Wind, type LucideIcon,
+  Cloud, CloudFog, CloudLightning, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
+  ShieldCheck, Thermometer, Wind, X, type LucideIcon,
 } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
 import { useFormat, useI18n } from "@/lib/i18n/client";
@@ -19,7 +19,7 @@ import { LogoMark } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { LEGEND, legendGradient, type LayerId } from "./field";
+import { LEGEND, frameOf, govAt, legendGradient, sample, type GovInfo, type LayerId } from "./field";
 import type { MapMode } from "./weather-map";
 
 const WeatherMap = dynamic(() => import("./weather-map").then((m) => m.WeatherMap), {
@@ -57,6 +57,9 @@ export function Observatory() {
   const [playing, setPlaying] = useState(false);
   const [dayIdx, setDayIdx] = useState(0);
   const [selectedIso, setSelectedIso] = useState<string | null>(null);
+  const [myPos, setMyPos] = useState<{ lat: number; lon: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locMsg, setLocMsg] = useState<string | null>(null);
 
   const forecast = useApi<ForecastGrid>("/api/observatory/forecast", { refreshMs: REFRESH_MS });
   const warnings = useApi<WarningsResult>("/api/observatory/warnings", { refreshMs: REFRESH_MS });
@@ -88,6 +91,44 @@ export function Observatory() {
     () => (warnings.data?.warnings ?? []).filter((w) => w.day === warnings.data?.days[dayIdx]),
     [warnings.data, dayIdx],
   );
+
+  function locate() {
+    if (!("geolocation" in navigator)) { setLocMsg(t("observatory.locateDenied")); return; }
+    setLocating(true); setLocMsg(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        setLocating(false);
+        const pos = { lat: p.coords.latitude, lon: p.coords.longitude };
+        const gov = govAt(pos.lat, pos.lon);
+        if (!gov) { setLocMsg(t("observatory.outsideOman")); return; }
+        setMyPos(pos);
+        if (mode === "warnings") setSelectedIso(gov.iso);
+      },
+      () => { setLocating(false); setLocMsg(t("observatory.locateDenied")); },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 10 * 60_000 },
+    );
+  }
+
+  async function share() {
+    const url = `${window.location.origin}/observatory`;
+    const today = (warnings.data?.warnings ?? []).filter((w) => w.day === warnings.data?.days[0]);
+    const DOT: Record<number, string> = { 3: "🔴", 2: "🟠", 1: "🟡" };
+    const groups = new Map<string, { level: Level; hazard: Hazard; places: string[] }>();
+    for (const w of today) {
+      const k = `${w.level}-${w.hazard}`;
+      const g = groups.get(k) ?? { level: w.level, hazard: w.hazard, places: [] };
+      g.places.push(isAr ? GOV_NAMES[w.iso]?.nameAr : GOV_NAMES[w.iso]?.name);
+      groups.set(k, g);
+    }
+    const lines = [...groups.values()].sort((a, b) => b.level - a.level).map((g) =>
+      `${DOT[g.level]} ${t("observatory.shareIn", { hazard: t(`observatory.hazard.${g.hazard}`), places: g.places.join(isAr ? "، " : ", ") })}`);
+    const text = (lines.length ? [t("observatory.shareToday"), ...lines] : [t("observatory.shareNone")])
+      .concat("", `${t("observatory.shareFollow")}`).join("\n");
+    if (navigator.share) {
+      try { await navigator.share({ title: t("observatory.shareTitle"), text, url }); return; } catch { /* cancelled */ return; }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank", "noopener");
+  }
 
   const formatValue = (ly: LayerId, v: number, dirDeg?: number) => {
     const n = ly === "rain" ? (v < 0.1 ? "0" : v.toFixed(1)) : Math.round(v).toString();
@@ -129,6 +170,15 @@ export function Observatory() {
             );
           })}
         </nav>
+        <button
+          type="button"
+          onClick={share}
+          aria-label={t("observatory.share")}
+          title={t("observatory.share")}
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Share2 className="h-[18px] w-[18px]" />
+        </button>
         <LangToggle />
         <ThemeToggle />
         <Link
@@ -154,6 +204,7 @@ export function Observatory() {
             onSelectIso={setSelectedIso}
             formatValue={formatValue}
             levelLabel={levelLabel}
+            myPos={myPos}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -164,6 +215,33 @@ export function Observatory() {
               </>
             ) : (
               <><Loader2 className="h-5 w-5 animate-spin" />{t("observatory.loading")}</>
+            )}
+          </div>
+        )}
+
+        {grid && (
+          <div
+            className={cn(
+              "absolute top-3 z-[1000] flex w-64 flex-col items-end gap-2 sm:top-5",
+              mode === "warnings" ? "start-3 items-start sm:start-5" : "end-3 sm:end-5",
+              mode === "layers" && "top-[4.25rem] sm:top-5",
+            )}
+          >
+            <Button variant="outline" size="sm" className={cn(PANEL, "h-9 gap-1.5")} onClick={locate} disabled={locating}>
+              {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+              {locating ? t("observatory.locating") : t("observatory.locate")}
+            </Button>
+            {locMsg && <div className={cn(PANEL, "px-3 py-2 text-xs text-muted-foreground")}>{locMsg}</div>}
+            {myPos && mode === "layers" && (
+              <MyPlace
+                grid={grid}
+                step={cur}
+                pos={myPos}
+                gov={govAt(myPos.lat, myPos.lon)}
+                todays={(warnings.data?.warnings ?? []).filter((w) => w.day === omanDay(grid.times[cur]))}
+                formatValue={formatValue}
+                onClose={() => setMyPos(null)}
+              />
             )}
           </div>
         )}
@@ -211,6 +289,55 @@ function LangToggle() {
     >
       {isAr ? "EN" : "ع"}
     </button>
+  );
+}
+
+/** "Your area": the values now at the viewer's position and today's warnings for their governorate. */
+function MyPlace({ grid, step, pos, gov, todays, formatValue, onClose }: {
+  grid: ForecastGrid; step: number; pos: { lat: number; lon: number }; gov: GovInfo | null; todays: Warning[];
+  formatValue: (l: LayerId, v: number, dir?: number) => string; onClose: () => void;
+}) {
+  const { t, isAr } = useI18n();
+  const temp = frameOf(grid, "temp", step), rain = frameOf(grid, "rain", step);
+  const at = (arr: Float32Array) => sample(grid, arr, pos.lat, pos.lon) ?? 0;
+  const u = at(temp.u), v = at(temp.v);
+  const mine = gov ? todays.filter((w) => w.iso === gov.iso) : [];
+  return (
+    <div className={cn(PANEL, "w-64 space-y-2 p-3 text-start")}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-[11px] text-muted-foreground">{t("observatory.myPlace")}</div>
+          <div className="text-sm font-semibold">{gov ? (isAr ? gov.nameAr : gov.name) : "—"}</div>
+        </div>
+        <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-accent" aria-label={t("observatory.close")}><X className="h-3.5 w-3.5" /></button>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5 text-center">
+        {[
+          { icon: Thermometer, text: formatValue("temp", at(temp.values)) },
+          { icon: CloudRain, text: formatValue("rain", at(rain.values)) },
+          { icon: Wind, text: formatValue("wind", Math.hypot(u, v), (Math.atan2(-u, -v) * 180) / Math.PI + 360) },
+        ].map(({ icon: Icon, text }, k) => (
+          <div key={k} className="rounded-md bg-muted/60 px-1 py-1.5">
+            <Icon className="mx-auto h-3.5 w-3.5 text-muted-foreground" />
+            <div className="mt-0.5 text-xs font-medium tabular-nums">{text}</div>
+          </div>
+        ))}
+      </div>
+      <div className="text-[11px] text-muted-foreground">{t("observatory.todayHere")}</div>
+      {mine.length === 0 ? (
+        <div className="flex items-center gap-1.5 text-xs"><ShieldCheck className="h-3.5 w-3.5 text-success" />{t("observatory.noWarningsHere")}</div>
+      ) : (
+        <ul className="space-y-1">
+          {mine.map((w, i) => (
+            <li key={i} className="flex items-center gap-1.5 text-xs">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: LEVEL_COLOR[w.level] }} />
+              <span className="font-medium">{t(`observatory.hazard.${w.hazard}`)}</span>
+              <span className="text-muted-foreground">· {t(`observatory.level.${w.level}` as MessageKey)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

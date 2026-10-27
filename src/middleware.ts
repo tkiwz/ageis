@@ -5,7 +5,9 @@ import { csrfGate } from "@/lib/security/csrf";
 import { canAccessRoute } from "@/lib/rbac";
 import type { Role } from "@/lib/constants";
 
-const PUBLIC_PATHS = ["/", "/login", "/observatory", "/api/health", "/api/live", "/api/ready"];
+const PUBLIC_PATHS = ["/", "/login", "/api/health", "/api/live", "/api/ready"];
+/** Public sections, including their sub-routes (e.g. the observatory's link-preview image). */
+const PUBLIC_PREFIXES = ["/observatory"];
 const AUTH_API_PREFIX = "/api/auth";
 
 // Edge-safe NextAuth instance: decodes + verifies the JWT session cookie.
@@ -29,7 +31,7 @@ export default auth((req) => {
   if (/\.[a-z0-9]+$/i.test(path)) return NextResponse.next();
 
   // 5. Public pages
-  if (PUBLIC_PATHS.includes(path)) {
+  if (PUBLIC_PATHS.includes(path) || PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) {
     if (path === "/login" && user) {
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }

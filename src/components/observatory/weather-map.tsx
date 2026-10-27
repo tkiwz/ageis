@@ -6,7 +6,7 @@ import "leaflet/dist/leaflet.css";
 import type { ForecastGrid } from "@/lib/observatory/grid";
 import type { Level } from "@/lib/observatory/warnings";
 import governorates from "@/lib/observatory/oman-governorates.json";
-import { frameOf, landMask, renderFrame, sample, type Frame, type LayerId, type Polygons } from "./field";
+import { frameOf, inGovernorate, landMask, renderFrame, sample, type Frame, type LayerId, type Polygons } from "./field";
 
 export type MapMode = "layers" | "warnings";
 
@@ -49,10 +49,12 @@ interface Props {
   /** Hover readout text for the current layer, e.g. "31°" */
   formatValue: (layer: LayerId, v: number, dirDeg?: number) => string;
   levelLabel: (l: Level) => string;
+  /** The viewer's own position ("my location") */
+  myPos?: { lat: number; lon: number } | null;
 }
 
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel } = props;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos } = props;
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const tiles = useRef<{ base: L.TileLayer; labels: L.TileLayer } | null>(null);
@@ -60,6 +62,7 @@ export function WeatherMap(props: Props) {
   const govLayer = useRef<L.GeoJSON | null>(null);
   const particles = useRef<WindParticles | null>(null);
   const zoom = useRef<L.Control.Zoom | null>(null);
+  const me = useRef<L.CircleMarker | null>(null);
   const readout = useRef<HTMLDivElement>(null);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
   const frame = useMemo<Frame>(() => frameOf(grid, layer, step), [grid, layer, step]);
@@ -107,7 +110,7 @@ export function WeatherMap(props: Props) {
           if (v !== null) text = fmt(ly, v);
         }
       } else {
-        const hit = GOVS.features.find((f) => containsPoint(f, e.latlng.lng, e.latlng.lat));
+        const hit = GOVS.features.find((f) => inGovernorate(f.geometry, e.latlng.lng, e.latlng.lat));
         if (hit) text = `${ar ? hit.properties.nameAr : hit.properties.name} · ${ll(lv?.[hit.properties.iso] ?? 0)}`;
       }
       if (!text) { el.style.opacity = "0"; return; }
@@ -129,7 +132,7 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -161,6 +164,18 @@ export function WeatherMap(props: Props) {
     if (overlay.current) overlay.current.setUrl(url);
     else overlay.current = L.imageOverlay(url, bounds, { opacity: 1, interactive: false, className: "obs-raster" }).addTo(m);
   }, [canvas, grid, layer, frame, mode, dark]);
+
+  // "My location": a calm dot, and the map moves there
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    if (!myPos) { me.current?.remove(); me.current = null; return; }
+    const ll = L.latLng(myPos.lat, myPos.lon);
+    if (!me.current) {
+      me.current = L.circleMarker(ll, { radius: 7, color: "#ffffff", weight: 2.5, fillColor: "hsl(220 83% 60%)", fillOpacity: 1, className: "obs-me", pane: "markerPane" }).addTo(m);
+    } else me.current.setLatLng(ll);
+    m.flyTo(ll, Math.max(m.getZoom(), 8), { duration: 0.8 });
+  }, [myPos]);
 
   // Zoom buttons sit on the side the panels leave free (the map itself is always LTR)
   useEffect(() => {
@@ -218,19 +233,6 @@ export function WeatherMap(props: Props) {
       />
     </div>
   );
-}
-
-function containsPoint(f: GovFeature, lon: number, lat: number) {
-  const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
-  const inRing = (ring: number[][]) => {
-    let inside = false;
-    for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
-      const [xa, ya] = ring[a], [xb, yb] = ring[b];
-      if (ya > lat !== yb > lat && lon < ((xb - xa) * (lat - ya)) / (yb - ya) + xa) inside = !inside;
-    }
-    return inside;
-  };
-  return polys.some(([outer, ...holes]) => inRing(outer) && !holes.some(inRing));
 }
 
 /**
