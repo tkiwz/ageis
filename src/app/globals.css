@@ -174,3 +174,9 @@
 @keyframes obs-genesis { 0% { box-shadow: 0 0 0 0 rgb(74 134 214 / 0.55); } 100% { box-shadow: 0 0 0 14px rgb(74 134 214 / 0); } }
 .obs-genesis-l { margin-top: 2px; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 600; white-space: nowrap;
   color: hsl(var(--foreground)); background: hsl(var(--background) / 0.85); border: 1px solid hsl(var(--border) / 0.8); }
+/* Cyclone view */
+@media (prefers-reduced-motion: no-preference) { .obs-cyc { animation: obs-spin 6s linear infinite; } }
+@keyframes obs-spin { to { transform: rotate(-360deg); } }
+.obs-cyc-t, .obs-cyc-n { display: inline-block; padding: 0 5px; border-radius: 5px; font-size: 10px; white-space: nowrap;
+  color: hsl(var(--foreground)); background: hsl(var(--background) / 0.85); border: 1px solid hsl(var(--border) / 0.7); }
+.obs-cyc-n { font-size: 12px; font-weight: 700; }

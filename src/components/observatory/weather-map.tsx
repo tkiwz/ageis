@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Cloud, CloudFog, CloudLightning, CloudMoon, CloudRain, CloudRainWind, CloudSun, Moon, Sun } from "lucide-react";
 import type { Wilayat } from "@/lib/observatory/place";
 import type { RainTrack } from "./rain-tracks";
+import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import wilayatsJson from "@/lib/observatory/wilayats.json";
 import { frameOf, inGovernorate, landMask, pointWeather, renderFrame, sample, type Frame, type LayerId, type Polygons, type Symbol } from "./field";
 
@@ -36,6 +37,9 @@ const SYMBOL_SVG: Record<Symbol, string> = Object.fromEntries(
     ["STORM", CloudLightning, "#e08a3c"], ["FOG", CloudFog, "#aab4c3"],
   ] as const).map(([k, Icon, color]) => [k, renderToStaticMarkup(<Icon size={18} color={color} strokeWidth={2} />)]),
 ) as Record<Symbol, string>;
+
+/** A storm symbol (two curved arms) that turns slowly, like a cyclone. */
+const CYCLONE_SVG = `<svg class="obs-cyc" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="4" fill="#c8463d"/><path d="M17 5a12 12 0 0 1 11 7M17 29a12 12 0 0 1-11-7" stroke="#c8463d" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M28 12c-3-2-6-2-8 0M6 22c3 2 6 2 8 0" stroke="#c8463d" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
 
 /** Warning fills: soft, but distinct for colour-blind readers (lightness also changes). */
 export const LEVEL_COLOR: Record<Level, string> = { 0: "transparent", 1: "#e3c14f", 2: "#e08a3c", 3: "#c8463d" };
@@ -75,13 +79,23 @@ interface Props {
   tracks?: { track: RainTrack; startLabel: string }[];
   /** Live satellite instead of the forecast: WMS layer name, frame times, the one shown */
   satellite?: { wms: string; times: string[]; frame: number } | null;
+  /** Cyclone view: live storms, and a past storm being replayed (track up to `progress` 0..1) */
+  cyclones?: {
+    live: ActiveCyclone[];
+    history: { track: [number, number, string][] } | null;
+    progress: number;
+    timeLabel: (iso: string) => string;
+  } | null;
 }
+
+export const CAT_COLOR: Record<string, string> = { TD: "#7fb0dc", TS: "#e3c14f", HU: "#c8463d", CY: "#c8463d", SCS: "#e08a3c" };
+const REGION_BOUNDS = L.latLngBounds([-8, 35], [33, 95]);
 
 const EUMETSAT_WMS = "https://view.eumetsat.int/geoserver/wms";
 
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite } = props;
-  const showForecast = mode === "layers" && !satellite;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones } = props;
+  const showForecast = mode === "layers" && !satellite && !cyclones;
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const tiles = useRef<{ base: L.TileLayer; labels: L.TileLayer } | null>(null);
@@ -93,6 +107,7 @@ export function WeatherMap(props: Props) {
   const symbols = useRef<L.LayerGroup | null>(null);
   const trackLayer = useRef<L.LayerGroup | null>(null);
   const satFrames = useRef<{ key: string; layers: L.TileLayer.WMS[] } | null>(null);
+  const cycLayer = useRef<L.LayerGroup | null>(null);
   const readout = useRef<HTMLDivElement>(null);
   const [zoomTick, setZoomTick] = useState(0);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
@@ -117,6 +132,7 @@ export function WeatherMap(props: Props) {
     m.createPane("tracks").style.zIndex = "465"; // above town symbols so "where it starts" stays readable
     m.getPane("tracks")!.style.pointerEvents = "none";
     trackLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
+    cycLayer.current = L.layerGroup().addTo(m);
     m.on("zoomend", () => setZoomTick((z) => z + 1));
     m.getPane("labels")!.style.pointerEvents = "none";
 
@@ -170,7 +186,7 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -290,6 +306,60 @@ export function WeatherMap(props: Props) {
     const reveal = () => cache.layers.forEach((l) => l.setOpacity(l === show ? 0.92 : 0));
     if ((show as unknown as { _loading?: boolean })._loading) show.once("load", reveal); else reveal();
   }, [satellite]);
+
+  // ── Cyclones: wider view of the Arabian Sea, cones, wind zones, tracks ──
+  const cycOn = !!cyclones;
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    if (cycOn) {
+      m.setMinZoom(3.5);
+      m.setMaxBounds(REGION_BOUNDS.pad(0.3));
+      m.flyToBounds(L.latLngBounds([8, 48], [27, 72]), { duration: 0.7 });
+    } else {
+      m.setMinZoom(5);
+      m.setMaxBounds(OMAN_BOUNDS.pad(1.5));
+      if (m.getZoom() < 5) m.fitBounds(OMAN_BOUNDS, fitPadding(mode, isAr));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cycOn]);
+
+  useEffect(() => {
+    const grp = cycLayer.current;
+    if (!grp) return;
+    grp.clearLayers();
+    if (!cyclones) return;
+    for (const c of cyclones.live) {
+      if (c.cone) L.polygon(c.cone.map((r) => r.map(([x, y]) => [y, x] as [number, number])), { color: dark ? "#cbd5e1" : "#475569", weight: 1, dashArray: "4 4", fillOpacity: 0.08, interactive: false }).addTo(grp);
+      for (const z of c.windZones) {
+        const col = z.kmh === 120 ? "#c8463d" : z.kmh === 90 ? "#e08a3c" : "#e3c14f";
+        L.polygon(z.rings.map((r) => r.map(([x, y]) => [y, x] as [number, number])), { color: col, weight: 0.8, fillColor: col, fillOpacity: 0.14, interactive: false }).addTo(grp);
+      }
+      for (const seg of c.track) L.polyline(seg.coords.map(([x, y]) => [y, x] as [number, number]), { color: CAT_COLOR[seg.cat], weight: 3, opacity: 0.95, interactive: false }).addTo(grp);
+      c.points.forEach((p, k) => {
+        L.circleMarker([p.lat, p.lon], { radius: 4, color: "#ffffff", weight: 1.2, fillColor: p.forecast ? "transparent" : "#94a3b8", fillOpacity: p.forecast ? 0 : 1, interactive: false }).addTo(grp);
+        if (p.forecast && k % 2 === 0) {
+          L.marker([p.lat, p.lon], { interactive: false, icon: L.divIcon({ className: "", iconSize: [90, 16], iconAnchor: [-6, 8], html: `<span class="obs-cyc-t">${cyclones.timeLabel(p.time)}</span>` }) }).addTo(grp);
+        }
+      });
+      const nowPt = [...c.points].reverse().find((p) => !p.forecast) ?? c.points[0];
+      if (nowPt) {
+        L.marker([nowPt.lat, nowPt.lon], { interactive: false, icon: L.divIcon({ className: "", iconSize: [34, 34], iconAnchor: [17, 17], html: CYCLONE_SVG }) }).addTo(grp);
+        L.marker([nowPt.lat, nowPt.lon], { interactive: false, icon: L.divIcon({ className: "", iconSize: [140, 18], iconAnchor: [-20, 9], html: `<span class="obs-cyc-n">${c.name}</span>` }) }).addTo(grp);
+      }
+    }
+    // A past storm being replayed: the whole path faint, the travelled part bold, a storm icon at the head
+    const h = cyclones.history;
+    if (h && h.track.length > 1) {
+      const all = h.track.map(([x, y]) => [y, x] as [number, number]);
+      L.polyline(all, { color: dark ? "#cbd5e1" : "#64748b", weight: 2, opacity: 0.35, dashArray: "3 5", interactive: false }).addTo(grp);
+      const upto = Math.max(1, Math.round(cyclones.progress * (h.track.length - 1)));
+      for (let k = 1; k <= upto; k++) {
+        L.polyline([all[k - 1], all[k]], { color: CAT_COLOR[h.track[k][2]] ?? CAT_COLOR.TS, weight: 4, opacity: 0.95, interactive: false }).addTo(grp);
+      }
+      L.marker(all[upto], { interactive: false, icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 15], html: CYCLONE_SVG }) }).addTo(grp);
+    }
+  }, [cyclones, dark]);
 
   // "My location": a calm dot, and the map moves there
   useEffect(() => {

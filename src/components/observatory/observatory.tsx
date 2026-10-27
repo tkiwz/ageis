@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
-  CalendarDays, Cloud, CloudFog, Satellite, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
+  CalendarDays, Cloud, CloudFog, Satellite, Tornado, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
   ShieldCheck, Thermometer, Wind, X, type LucideIcon,
 } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
@@ -23,6 +23,9 @@ import { BANDS, LEGEND, frameOf, govAt, legendGradient, sample, type GovInfo, ty
 import type { MapMode } from "./weather-map";
 import { ForecastView, nearestWilayat } from "./forecast-view";
 import { directionKey, rainTracks, type RainTrack } from "./rain-tracks";
+import type { ActiveCyclone } from "@/lib/observatory/cyclones";
+import cycloneHistory from "@/lib/observatory/cyclone-history.json";
+import { CAT_COLOR_UI, type HistoricStorm } from "./cyclone-types";
 
 type Tab = MapMode | "forecast";
 
@@ -63,7 +66,9 @@ export function Observatory() {
 
   const [tab, setTab] = useState<Tab>("layers");
   const mode: MapMode = tab === "warnings" ? "warnings" : "layers";
-  const [layer, setLayer] = useState<LayerId | "sat">("temp");
+  const [layer, setLayer] = useState<LayerId | "sat" | "cyc">("temp");
+  const [histIdx, setHistIdx] = useState<number | null>(null);
+  const [histProgress, setHistProgress] = useState(1);
   const [satProduct, setSatProduct] = useState<SatProduct>("natural");
   const [satFrame, setSatFrame] = useState(SAT_FRAMES - 1);
   const [satPlaying, setSatPlaying] = useState(false);
@@ -75,6 +80,14 @@ export function Observatory() {
     setSatTimes(Array.from({ length: SAT_FRAMES }, (_, k) => new Date(end - (SAT_FRAMES - 1 - k) * 15 * 60_000).toISOString()));
     setSatFrame(SAT_FRAMES - 1);
   }, [layer, satProduct]);
+  // Replaying a past cyclone: draw its path over ~5 seconds
+  useEffect(() => {
+    if (histIdx === null || histProgress >= 1) return;
+    const id = window.setTimeout(() => setHistProgress((p) => Math.min(1, p + 0.012)), 50);
+    return () => window.clearTimeout(id);
+  }, [histIdx, histProgress]);
+  const cycApi = useApi<{ cyclones: ActiveCyclone[]; source: string }>("/api/observatory/cyclones", { refreshMs: 15 * 60_000, enabled: layer === "cyc" });
+
   useEffect(() => {
     if (!satPlaying) return;
     const id = window.setInterval(() => setSatFrame((f) => (f + 1) % SAT_FRAMES), 700);
@@ -252,8 +265,14 @@ export function Observatory() {
             levelLabel={levelLabel}
             myPos={myPos}
             tracks={dayTracks.map((track) => ({ track, startLabel: trackLabel(track) }))}
-            layer={layer === "sat" ? "temp" : layer}
+            layer={layer === "sat" || layer === "cyc" ? "temp" : layer}
             satellite={tab === "layers" && layer === "sat" && satTimes.length ? { wms: SAT_WMS[satProduct], times: satTimes, frame: satFrame } : null}
+            cyclones={tab === "layers" && layer === "cyc" ? {
+              live: cycApi.data?.cyclones ?? [],
+              history: histIdx !== null ? HISTORY[histIdx] : null,
+              progress: histProgress,
+              timeLabel: (iso: string) => f.date(iso, { weekday: "short", hour: "numeric" }),
+            } : null}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -298,6 +317,15 @@ export function Observatory() {
         {grid && tab === "layers" && (
           <>
             <LayerSwitcher layer={layer} onChange={setLayer} />
+            {layer === "cyc" && (
+              <CyclonePanel
+                live={cycApi.data?.cyclones ?? null}
+                loading={cycApi.loading}
+                histIdx={histIdx}
+                onReplay={(k) => { setHistIdx(k); setHistProgress(0); }}
+                onStop={() => setHistIdx(null)}
+              />
+            )}
             {layer === "sat" && (
               <SatPanel
                 product={satProduct} onProduct={setSatProduct}
@@ -313,7 +341,7 @@ export function Observatory() {
                 onPick={(tr) => { setPlaying(false); setStep(tr.steps[0].t); }}
               />
             )}
-            {layer !== "sat" && <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
+            {layer !== "sat" && layer !== "cyc" && <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
               <Legend layer={layer} dark={dark} />
               <TimeBar
                 times={grid.times} days={days} step={cur} nowStep={nowStep} playing={playing}
@@ -336,6 +364,93 @@ export function Observatory() {
           />
         )}
       </main>
+    </div>
+  );
+}
+
+const HISTORY = (cycloneHistory as unknown as { storms: HistoricStorm[] }).storms;
+const kmh = (kt: number | null) => (kt === null ? null : Math.round(kt * 1.852));
+
+/** Active storms nearby, and the memory of storms that reached Oman, with replay. */
+function CyclonePanel({ live, loading, histIdx, onReplay, onStop }: {
+  live: ActiveCyclone[] | null; loading: boolean; histIdx: number | null; onReplay: (k: number) => void; onStop: () => void;
+}) {
+  const { t, isAr } = useI18n();
+  const f = useFormat();
+  const govName = (iso: string) => (isAr ? GOV_NAMES[iso]?.nameAr : GOV_NAMES[iso]?.name) ?? iso;
+  const catOf = (c: ActiveCyclone) => c.track.reduce((best, s) => (s.cat === "HU" ? "HU" : best === "HU" ? best : s.cat === "TS" ? "TS" : best), "TD" as string);
+  return (
+    <div className={cn(PANEL, "absolute start-3 top-[4.25rem] z-[1000] flex max-h-[calc(100%-6rem)] w-[22rem] max-w-[calc(100%-1.5rem)] flex-col sm:start-5 sm:top-[5.25rem]")}>
+      <div className="border-b border-border/50 p-3">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Tornado className="h-4 w-4 text-danger" />{t("observatory.cyc.live")}</div>
+        {loading && !live ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("observatory.loading")}</div>
+        ) : !live?.length ? (
+          <p className="text-xs text-muted-foreground">{t("observatory.cyc.noneLive")}</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {live.map((c) => {
+              const cat = catOf(c);
+              const threat = c.closestKm < 400 && c.points.some((p) => p.forecast);
+              return (
+                <li key={c.id} className="rounded-lg border border-border/50 p-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: CAT_COLOR_UI[cat] }} />
+                    <span className="font-semibold">{c.name}</span>
+                    <span className="text-muted-foreground">· {t(`observatory.cyc.cat.${cat as "TD" | "TS" | "HU"}`)}</span>
+                  </div>
+                  <div className="mt-0.5 text-muted-foreground">
+                    {t("observatory.cyc.distance", { km: f.number(c.closestKm) })} · {t("observatory.cyc.updated", { time: f.relative(c.updated.endsWith("Z") ? c.updated : `${c.updated}Z`) })}
+                  </div>
+                  {threat && <div className="mt-1 font-medium text-warning">{t("observatory.cyc.threat")}</div>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className="text-sm font-semibold">{t("observatory.cyc.memory")}</div>
+        <p className="mb-2 text-[11px] text-muted-foreground">{t("observatory.cyc.memoryDesc")}</p>
+        <ul className="space-y-1.5">
+          {HISTORY.map((s, k) => {
+            const name = (isAr ? s.nameAr : null) ?? s.name ?? t("observatory.cyc.unnamed");
+            const peak = kmh(s.peakKt);
+            return (
+              <li key={s.sid}>
+                <button
+                  onClick={() => (histIdx === k ? onStop() : onReplay(k))}
+                  className={cn("w-full rounded-lg border p-2 text-start text-xs transition-colors",
+                    histIdx === k ? "border-primary/50 bg-primary/10" : "border-border/50 hover:bg-accent/60")}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CAT_COLOR_UI[s.peakCat] }} />
+                    <span className="font-semibold">{s.year} · {name}</span>
+                    <span className="text-muted-foreground">· {t(`observatory.cyc.cat.${s.peakCat}`)}</span>
+                    <span className="ms-auto text-[10px] text-primary">{histIdx === k ? t("observatory.cyc.stop") : t("observatory.cyc.replay")}</span>
+                  </div>
+                  <div className="mt-0.5 text-muted-foreground">
+                    {s.landfall ? t("observatory.cyc.landfall", { gov: govName(s.landfall) }) : t("observatory.cyc.passed", { km: f.number(s.closestKm) })}
+                    {peak !== null && <> · {t("observatory.cyc.peak", { kmh: f.number(peak) })}</>}
+                  </div>
+                  {s.near.length > 0 && !s.landfall && (
+                    <div className="text-muted-foreground">{t("observatory.cyc.near", { govs: s.near.slice(0, 3).map(govName).join(isAr ? "، " : ", ") })}</div>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      <div className="space-y-1 border-t border-border/50 p-3 text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap gap-3">
+          {(["TD", "TS", "HU"] as const).map((c) => (
+            <span key={c} className="flex items-center gap-1"><span className="h-2 w-4 rounded-sm" style={{ background: CAT_COLOR_UI[c] }} />{t(`observatory.cyc.cat.${c}`)}</span>
+          ))}
+        </div>
+        <div>{t("observatory.cyc.zones")} · {t("observatory.cyc.cone")}</div>
+        <div>{t("observatory.cyc.source")}</div>
+      </div>
     </div>
   );
 }
@@ -506,11 +621,11 @@ function MyPlace({ grid, step, pos, gov, todays, formatValue, onClose }: {
 
 const PANEL = "rounded-xl border border-border/60 bg-background/90 shadow-sm backdrop-blur-md";
 
-function LayerSwitcher({ layer, onChange }: { layer: LayerId | "sat"; onChange: (l: LayerId | "sat") => void }) {
+function LayerSwitcher({ layer, onChange }: { layer: LayerId | "sat" | "cyc"; onChange: (l: LayerId | "sat" | "cyc") => void }) {
   const { t } = useI18n();
   return (
     <div className={cn(PANEL, "absolute start-3 top-3 z-[1000] flex gap-1 p-1 sm:start-5 sm:top-5")} role="radiogroup" aria-label={t("observatory.tabs.map")}>
-      {[...LAYERS, { id: "sat" as const, icon: Satellite }].map(({ id, icon: Icon }) => (
+      {[...LAYERS, { id: "sat" as const, icon: Satellite }, { id: "cyc" as const, icon: Tornado }].map(({ id, icon: Icon }) => (
         <button
           key={id}
           role="radio"
@@ -523,7 +638,7 @@ function LayerSwitcher({ layer, onChange }: { layer: LayerId | "sat"; onChange: 
         >
           <Icon className="h-4 w-4" />
           {/* Phones: only the chosen layer keeps its label */}
-          <span className={cn(layer !== id && "sr-only sm:not-sr-only")}>{id === "sat" ? t("observatory.sat.layer") : t(`observatory.layers.${id}`)}</span>
+          <span className={cn(layer !== id && "sr-only sm:not-sr-only")}>{id === "sat" ? t("observatory.sat.layer") : id === "cyc" ? t("observatory.cyc.layer") : t(`observatory.layers.${id}`)}</span>
         </button>
       ))}
     </div>
