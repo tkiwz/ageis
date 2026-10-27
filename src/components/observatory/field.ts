@@ -198,3 +198,29 @@ export function inGovernorate(g: GovGeom, lon: number, lat: number) {
 export function govAt(lat: number, lon: number): GovInfo | null {
   return GOV_FEATURES.find((f) => inGovernorate(f.geometry, lon, lat))?.properties ?? null;
 }
+
+// ── Town symbols (TV-style weather icons) ───────────────────
+export type Symbol = "SUN" | "MOON" | "PARTLY" | "PARTLY_NIGHT" | "CLOUD" | "RAIN" | "HEAVY_RAIN" | "STORM" | "FOG";
+
+/** What the sky looks like at a point and step, from the nearest grid values. */
+export function pointWeather(g: ForecastGrid, t: number, lat: number, lon: number) {
+  const { lat0, lon0, step, nx, ny } = g.grid;
+  const i = Math.min(nx - 1, Math.max(0, Math.round((lon - lon0) / step)));
+  const j = Math.min(ny - 1, Math.max(0, Math.round((lat - lat0) / step)));
+  const n = t * nx * ny + j * nx + i;
+  const hour = new Date(Date.parse(g.times[t]) + 4 * 3600_000).getUTCHours(); // Oman time
+  const night = hour >= 18 || hour < 6;
+  const code = g.code[n], rain = g.rain[n], cloud = g.cloud[n];
+  let symbol: Symbol;
+  if (code >= 95) symbol = "STORM";
+  else if (rain >= 4) symbol = "HEAVY_RAIN";
+  else if (rain >= 0.3 || (code >= 51 && code <= 82)) symbol = "RAIN";
+  else if (code === 45 || code === 48) symbol = "FOG";
+  else if (cloud >= 70) symbol = "CLOUD";
+  else if (cloud >= 25) symbol = night ? "PARTLY_NIGHT" : "PARTLY";
+  else symbol = night ? "MOON" : "SUN";
+  return { symbol, temp: g.temp[n], rain, cloud, code };
+}
+
+/** Plain-language bands under each legend (keys in observatory.bands.<layer>). */
+export const BANDS: Record<LayerId, number> = { temp: 4, rain: 4, wind: 4, cloud: 4 };

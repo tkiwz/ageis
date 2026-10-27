@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ForecastGrid } from "@/lib/observatory/grid";
 import type { Level } from "@/lib/observatory/warnings";
 import governorates from "@/lib/observatory/oman-governorates.json";
-import { frameOf, inGovernorate, landMask, renderFrame, sample, type Frame, type LayerId, type Polygons } from "./field";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Cloud, CloudFog, CloudLightning, CloudMoon, CloudRain, CloudRainWind, CloudSun, Moon, Sun } from "lucide-react";
+import type { Wilayat } from "@/lib/observatory/place";
+import wilayatsJson from "@/lib/observatory/wilayats.json";
+import { frameOf, inGovernorate, landMask, pointWeather, renderFrame, sample, type Frame, type LayerId, type Polygons, type Symbol } from "./field";
 
 export type MapMode = "layers" | "warnings";
 
@@ -16,6 +20,21 @@ const GOVS = governorates as unknown as GeoJSON.FeatureCollection<GeoJSON.Polygo
 const LAND: Polygons = GOVS.features.flatMap((f) =>
   f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates,
 ) as Polygons;
+
+const WILAYATS = (wilayatsJson as { wilayats: Wilayat[] }).wilayats;
+/** Towns that always carry a weather symbol; every wilayat shows once zoomed in. */
+const MAJOR = ["Muscat", "Seeb", "Sohar", "Salalah", "Nizwa", "Sur", "Ibri", "Al Buraimi", "Khasab", "Al Rustaq", "Ibra",
+  "Haima", "Ad Duqm", "Masirah", "Thumrait", "Adam", "Shinas", "Al Mudhaibi", "Jaalan Bani Bu Ali", "Mahout", "Muqshin", "Dibba", "Bahla", "Barka"];
+/** Major towns first, so they win when symbols would overlap. */
+const BY_PRIORITY = [...WILAYATS].sort((a, b) => rank(a) - rank(b));
+function rank(w: Wilayat) { const k = MAJOR.indexOf(w.name); return k < 0 ? 100 : k; }
+const SYMBOL_SVG: Record<Symbol, string> = Object.fromEntries(
+  ([
+    ["SUN", Sun, "#e9b949"], ["MOON", Moon, "#c9d3e6"], ["PARTLY", CloudSun, "#e3c56b"], ["PARTLY_NIGHT", CloudMoon, "#c9d3e6"],
+    ["CLOUD", Cloud, "#b8c2d2"], ["RAIN", CloudRain, "#6fa8dc"], ["HEAVY_RAIN", CloudRainWind, "#4a86d6"],
+    ["STORM", CloudLightning, "#e08a3c"], ["FOG", CloudFog, "#aab4c3"],
+  ] as const).map(([k, Icon, color]) => [k, renderToStaticMarkup(<Icon size={18} color={color} strokeWidth={2} />)]),
+) as Record<Symbol, string>;
 
 /** Warning fills: soft, but distinct for colour-blind readers (lightness also changes). */
 export const LEVEL_COLOR: Record<Level, string> = { 0: "transparent", 1: "#e3c14f", 2: "#e08a3c", 3: "#c8463d" };
@@ -63,7 +82,9 @@ export function WeatherMap(props: Props) {
   const particles = useRef<WindParticles | null>(null);
   const zoom = useRef<L.Control.Zoom | null>(null);
   const me = useRef<L.CircleMarker | null>(null);
+  const symbols = useRef<L.LayerGroup | null>(null);
   const readout = useRef<HTMLDivElement>(null);
+  const [zoomTick, setZoomTick] = useState(0);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
   const frame = useMemo<Frame>(() => frameOf(grid, layer, step), [grid, layer, step]);
   const live = useRef({ frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr });
@@ -81,6 +102,9 @@ export function WeatherMap(props: Props) {
     zoom.current = L.control.zoom({ position: "bottomright" }).addTo(m);
     m.attributionControl.setPrefix(false);
     m.createPane("labels").style.zIndex = "450";
+    m.createPane("symbols").style.zIndex = "460";
+    symbols.current = L.layerGroup([], { pane: "symbols" }).addTo(m);
+    m.on("zoomend", () => setZoomTick((z) => z + 1));
     m.getPane("labels")!.style.pointerEvents = "none";
 
     const gl = L.geoJSON(GOVS, {
@@ -132,7 +156,7 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -164,6 +188,31 @@ export function WeatherMap(props: Props) {
     if (overlay.current) overlay.current.setUrl(url);
     else overlay.current = L.imageOverlay(url, bounds, { opacity: 1, interactive: false, className: "obs-raster" }).addTo(m);
   }, [canvas, grid, layer, frame, mode, dark]);
+
+  // ── Town weather symbols (layers mode) ─────────────────────
+  useEffect(() => {
+    const m = map.current, grp = symbols.current;
+    if (!m || !grp) return;
+    grp.clearLayers();
+    if (mode !== "layers") return;
+    const all = m.getZoom() >= 7.5;
+    const placed: L.Point[] = [];
+    for (const w of BY_PRIORITY) {
+      if (!all && rank(w) === 100) continue;
+      // Skip a symbol that would sit on top of one already drawn
+      const pt = m.latLngToContainerPoint([w.lat, w.lon]);
+      if (placed.some((q) => Math.abs(q.x - pt.x) < 60 && Math.abs(q.y - pt.y) < (all ? 40 : 28))) continue;
+      placed.push(pt);
+      const pw = pointWeather(grid, step, w.lat, w.lon);
+      const html =
+        `<div class="obs-sym">${SYMBOL_SVG[pw.symbol]}<span class="obs-sym-t">${Math.round(pw.temp)}°</span></div>` +
+        (all ? `<div class="obs-sym-n">${isAr ? w.nameAr : w.name}</div>` : "");
+      L.marker([w.lat, w.lon], {
+        pane: "symbols", interactive: false, keyboard: false,
+        icon: L.divIcon({ className: "obs-sym-wrap", html, iconSize: [64, all ? 40 : 26], iconAnchor: [32, 13] }),
+      }).addTo(grp);
+    }
+  }, [grid, step, mode, isAr, zoomTick]);
 
   // "My location": a calm dot, and the map moves there
   useEffect(() => {

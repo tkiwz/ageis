@@ -19,7 +19,7 @@ import { LogoMark } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { LEGEND, frameOf, govAt, legendGradient, sample, type GovInfo, type LayerId } from "./field";
+import { BANDS, LEGEND, frameOf, govAt, legendGradient, sample, type GovInfo, type LayerId } from "./field";
 import type { MapMode } from "./weather-map";
 import { ForecastView } from "./forecast-view";
 
@@ -386,7 +386,7 @@ function Legend({ layer, dark }: { layer: LayerId; dark: boolean }) {
   const f = useFormat();
   const ticks = LEGEND[layer];
   return (
-    <div className={cn(PANEL, "pointer-events-auto w-56 px-3 py-2")}>
+    <div className={cn(PANEL, "pointer-events-auto w-64 px-3 py-2")}>
       <div className="mb-1.5 flex items-baseline justify-between text-[11px] text-muted-foreground">
         <span className="font-medium text-foreground">{t(`observatory.layers.${layer}`)}</span>
         <span>{t(`observatory.units.${layer}`)}</span>
@@ -394,6 +394,10 @@ function Legend({ layer, dark }: { layer: LayerId; dark: boolean }) {
       <div className="h-2 rounded-full" style={{ background: legendGradient(layer, dark) }} dir="ltr" />
       <div className="mt-1 flex justify-between text-[10px] tabular-nums text-muted-foreground" dir="ltr">
         {ticks.map((v) => <span key={v}>{f.number(v)}</span>)}
+      </div>
+      {/* Plain words under each colour band, so the map reads without numbers */}
+      <div className="mt-0.5 grid text-center text-[10px] font-medium text-foreground/80" dir="ltr" style={{ gridTemplateColumns: `repeat(${BANDS[layer]}, 1fr)` }}>
+        {Array.from({ length: BANDS[layer] }, (_, k) => <span key={k} className="truncate px-0.5">{t(`observatory.bands.${layer}.${k}` as MessageKey)}</span>)}
       </div>
     </div>
   );

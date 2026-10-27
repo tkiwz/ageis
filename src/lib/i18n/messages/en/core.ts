@@ -212,6 +212,38 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    bands: {
+      temp: {
+        "0": "Cool",
+        "1": "Mild",
+        "2": "Hot",
+        "3": "Very hot",
+      },
+      rain: {
+        "0": "Light",
+        "1": "Moderate",
+        "2": "Heavy",
+        "3": "Very heavy",
+      },
+      wind: {
+        "0": "Calm",
+        "1": "Moderate",
+        "2": "Brisk",
+        "3": "Strong",
+      },
+      cloud: {
+        "0": "Clear",
+        "1": "A few",
+        "2": "Scattered",
+        "3": "Overcast",
+      },
+      dust: {
+        "0": "Clean",
+        "1": "Light dust",
+        "2": "Suspended dust",
+        "3": "Dust storm",
+      },
+    },
     fc: {
       tab: "Forecast",
       pick: "Wilayat",
