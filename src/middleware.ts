@@ -5,7 +5,7 @@ import { csrfGate } from "@/lib/security/csrf";
 import { canAccessRoute } from "@/lib/rbac";
 import type { Role } from "@/lib/constants";
 
-const PUBLIC_PATHS = ["/", "/login", "/api/health", "/api/live", "/api/ready"];
+const PUBLIC_PATHS = ["/", "/login", "/observatory", "/api/health", "/api/live", "/api/ready"];
 const AUTH_API_PREFIX = "/api/auth";
 
 // Edge-safe NextAuth instance: decodes + verifies the JWT session cookie.

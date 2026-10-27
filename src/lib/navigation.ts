@@ -4,6 +4,7 @@ import {
   MonitorDot,
   Siren,
   BellRing,
+  CloudSun,
   FileCheck2,
   ListChecks,
   Building2,
@@ -67,6 +68,7 @@ export const NAVIGATION: NavModule[] = [
       { label: "Command center", labelAr: "مركز القيادة", href: "/command", icon: MonitorDot },
       { label: "Emergencies", labelAr: "الطوارئ", href: "/command/emergencies", icon: Siren },
       { label: "Alerts", labelAr: "التنبيهات", href: "/admin/alerts", icon: BellRing },
+      { label: "AEGIS Observatory", labelAr: "مرصد AEGIS", href: "/observatory", icon: CloudSun },
     ],
   },
   {

@@ -1,0 +1,349 @@
+"use client";
+
+import { useEffect, useMemo, useRef } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import type { ForecastGrid } from "@/lib/observatory/grid";
+import type { Level } from "@/lib/observatory/warnings";
+import governorates from "@/lib/observatory/oman-governorates.json";
+import { frameOf, landMask, renderFrame, sample, type Frame, type LayerId, type Polygons } from "./field";
+
+export type MapMode = "layers" | "warnings";
+
+interface GovProps { iso: string; name: string; nameAr: string }
+type GovFeature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon, GovProps>;
+const GOVS = governorates as unknown as GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon, GovProps>;
+const LAND: Polygons = GOVS.features.flatMap((f) =>
+  f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates,
+) as Polygons;
+
+/** Warning fills: soft, but distinct for colour-blind readers (lightness also changes). */
+export const LEVEL_COLOR: Record<Level, string> = { 0: "transparent", 1: "#e3c14f", 2: "#e08a3c", 3: "#c8463d" };
+
+// Esri canvas basemaps: quiet greys, labels drawn above the weather layer
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas";
+const TILES = {
+  dark: { base: `${ESRI}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, labels: `${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}` },
+  light: { base: `${ESRI}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, labels: `${ESRI}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}` },
+};
+const OMAN_BOUNDS = L.latLngBounds([16.6, 51.9], [26.45, 59.9]);
+/** Keep Oman clear of the floating panels (layer bar on top, time bar below, side panel in warnings). */
+const fitPadding = (mode: MapMode, rtl: boolean) =>
+  mode === "warnings" && window.innerWidth >= 640
+    ? { paddingTopLeft: L.point(rtl ? 420 : 24, 24), paddingBottomRight: L.point(rtl ? 24 : 420, 24) }
+    : mode === "warnings"
+      ? { paddingTopLeft: L.point(16, 16), paddingBottomRight: L.point(16, Math.round(window.innerHeight * 0.5)) } // phone: bottom sheet
+      : { paddingTopLeft: L.point(16, 70), paddingBottomRight: L.point(16, 190) };
+
+interface Props {
+  grid: ForecastGrid;
+  mode: MapMode;
+  layer: LayerId;
+  step: number;
+  dark: boolean;
+  isAr: boolean;
+  /** Warnings mode: worst level per governorate for the chosen day */
+  levels?: Record<string, Level>;
+  selectedIso?: string | null;
+  onSelectIso?: (iso: string | null) => void;
+  /** Hover readout text for the current layer, e.g. "31°" */
+  formatValue: (layer: LayerId, v: number, dirDeg?: number) => string;
+  levelLabel: (l: Level) => string;
+}
+
+export function WeatherMap(props: Props) {
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel } = props;
+  const box = useRef<HTMLDivElement>(null);
+  const map = useRef<L.Map | null>(null);
+  const tiles = useRef<{ base: L.TileLayer; labels: L.TileLayer } | null>(null);
+  const overlay = useRef<L.ImageOverlay | null>(null);
+  const govLayer = useRef<L.GeoJSON | null>(null);
+  const particles = useRef<WindParticles | null>(null);
+  const zoom = useRef<L.Control.Zoom | null>(null);
+  const readout = useRef<HTMLDivElement>(null);
+  const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
+  const frame = useMemo<Frame>(() => frameOf(grid, layer, step), [grid, layer, step]);
+  const live = useRef({ frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr });
+  live.current = { frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr };
+
+  // ── Create the map once ───────────────────────────────────
+  useEffect(() => {
+    if (!box.current || map.current) return;
+    const m = L.map(box.current, {
+      zoomControl: false, attributionControl: true, minZoom: 5, maxZoom: 10,
+      // maxBounds leaves room to slide Oman beside the warnings panel
+      maxBounds: OMAN_BOUNDS.pad(1.5), worldCopyJump: false, zoomSnap: 0.25,
+    });
+    m.fitBounds(OMAN_BOUNDS, fitPadding("layers", isAr));
+    zoom.current = L.control.zoom({ position: "bottomright" }).addTo(m);
+    m.attributionControl.setPrefix(false);
+    m.createPane("labels").style.zIndex = "450";
+    m.getPane("labels")!.style.pointerEvents = "none";
+
+    const gl = L.geoJSON(GOVS, {
+      style: () => ({}),
+      onEachFeature: (f: GovFeature, lyr) => {
+        lyr.on({
+          mouseover: () => { if (live.current.mode === "warnings") (lyr as L.Path).setStyle({ weight: 2.2 }); },
+          mouseout: () => { if (live.current.mode === "warnings") styleGovs(); },
+          click: () => { if (live.current.mode === "warnings") live.current.onSelectIso?.(f.properties.iso); },
+        });
+      },
+    }).addTo(m);
+    govLayer.current = gl;
+
+    // Value under the pointer (layers mode) or governorate + level (warnings mode)
+    m.on("mousemove", (e: L.LeafletMouseEvent) => {
+      const el = readout.current;
+      if (!el) return;
+      const { frame: fr, layer: ly, mode: md, levels: lv, formatValue: fmt, levelLabel: ll, isAr: ar } = live.current;
+      let text: string | null = null;
+      if (md === "layers") {
+        if (ly === "wind") {
+          const u = sample(grid, fr.u, e.latlng.lat, e.latlng.lng), v = sample(grid, fr.v, e.latlng.lat, e.latlng.lng);
+          if (u !== null && v !== null) text = fmt("wind", Math.hypot(u, v), (Math.atan2(-u, -v) * 180) / Math.PI + 360);
+        } else {
+          const v = sample(grid, fr.values, e.latlng.lat, e.latlng.lng);
+          if (v !== null) text = fmt(ly, v);
+        }
+      } else {
+        const hit = GOVS.features.find((f) => containsPoint(f, e.latlng.lng, e.latlng.lat));
+        if (hit) text = `${ar ? hit.properties.nameAr : hit.properties.name} · ${ll(lv?.[hit.properties.iso] ?? 0)}`;
+      }
+      if (!text) { el.style.opacity = "0"; return; }
+      el.textContent = text;
+      el.style.opacity = "1";
+      el.style.transform = `translate(${e.containerPoint.x + 14}px, ${e.containerPoint.y - 34}px)`;
+    });
+    m.on("mouseout", () => { if (readout.current) readout.current.style.opacity = "0"; });
+
+    const onLand = landMask(grid, LAND);
+    particles.current = new WindParticles(m, (lat, lon) => {
+      if (!onLand(lon, lat)) return null;
+      const fr = live.current.frame;
+      const u = sample(grid, fr.u, lat, lon), v = sample(grid, fr.v, lat, lon);
+      return u === null || v === null ? null : [u, v];
+    });
+    map.current = m;
+    return () => {
+      // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
+      particles.current?.destroy();
+      m.remove();
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Basemap follows the theme ─────────────────────────────
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    tiles.current?.base.remove();
+    tiles.current?.labels.remove();
+    const set = dark ? TILES.dark : TILES.light;
+    const attribution = "Esri · © OpenStreetMap · Open-Meteo";
+    tiles.current = {
+      base: L.tileLayer(set.base, { attribution, maxZoom: 16 }).addTo(m),
+      labels: L.tileLayer(set.labels, { maxZoom: 16, pane: "labels" }).addTo(m),
+    };
+    tiles.current.base.bringToBack();
+    particles.current?.setColor(dark ? "rgba(236,240,246,0.6)" : "rgba(38,52,72,0.55)");
+  }, [dark]);
+
+  // ── Weather raster ────────────────────────────────────────
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !canvas) return;
+    if (mode !== "layers") { overlay.current?.remove(); overlay.current = null; return; }
+    renderFrame(canvas, grid, layer, frame, LAND, dark);
+    const url = canvas.toDataURL("image/png");
+    const bounds = L.latLngBounds([grid.grid.lat0, grid.grid.lon0], [grid.grid.lat1, grid.grid.lon1]);
+    if (overlay.current) overlay.current.setUrl(url);
+    else overlay.current = L.imageOverlay(url, bounds, { opacity: 1, interactive: false, className: "obs-raster" }).addTo(m);
+  }, [canvas, grid, layer, frame, mode, dark]);
+
+  // Zoom buttons sit on the side the panels leave free (the map itself is always LTR)
+  useEffect(() => {
+    const awayFromPanel = mode === "warnings" ? !isAr : isAr;
+    zoom.current?.setPosition(awayFromPanel ? "bottomleft" : "bottomright");
+  }, [mode, isAr]);
+
+  // ── Wind particles only on the wind layer ─────────────────
+  useEffect(() => {
+    particles.current?.setActive(mode === "layers" && layer === "wind");
+  }, [mode, layer]);
+
+  // ── Governorate styling ───────────────────────────────────
+  function styleGovs() {
+    const gl = govLayer.current;
+    if (!gl) return;
+    const { mode: md, levels: lv, selectedIso: sel } = live.current;
+    gl.eachLayer((lyr) => {
+      const f = (lyr as L.Polygon).feature as GovFeature;
+      const lvl = (lv?.[f.properties.iso] ?? 0) as Level;
+      const isSel = sel === f.properties.iso;
+      (lyr as L.Path).setStyle(
+        md === "warnings"
+          ? {
+              color: isSel ? (dark ? "#f4f5f8" : "#1f2937") : lvl ? LEVEL_COLOR[lvl] : dark ? "rgba(220,226,235,0.35)" : "rgba(31,41,55,0.35)",
+              weight: isSel ? 2.6 : lvl ? 1.4 : 0.8,
+              fillColor: lvl ? LEVEL_COLOR[lvl] : dark ? "#9aa4b2" : "#64748b",
+              fillOpacity: lvl ? (isSel ? 0.5 : 0.36) : 0.04,
+            }
+          : { color: dark ? "rgba(230,234,240,0.32)" : "rgba(31,41,55,0.3)", weight: 0.7, fillOpacity: 0, interactive: false },
+      );
+    });
+  }
+  useEffect(styleGovs);
+
+  // Fly to a selected governorate
+  useEffect(() => {
+    const m = map.current, gl = govLayer.current;
+    if (!m || !gl || mode !== "warnings") return;
+    if (!selectedIso) { m.flyToBounds(OMAN_BOUNDS, { ...fitPadding(mode, isAr), duration: 0.6 }); return; }
+    gl.eachLayer((lyr) => {
+      const f = (lyr as L.Polygon).feature as GovFeature;
+      if (f.properties.iso === selectedIso) m.flyToBounds((lyr as L.Polygon).getBounds(), { padding: [60, 60], maxZoom: 8, duration: 0.6 });
+    });
+  }, [selectedIso, mode, isAr]);
+
+  return (
+    <div className="obs-map relative h-full w-full" dir="ltr">
+      <div ref={box} className="h-full w-full bg-muted" />
+      <div
+        ref={readout}
+        aria-hidden
+        className="pointer-events-none absolute left-0 top-0 z-[1000] whitespace-nowrap rounded-md border border-border/60 bg-background/90 px-2 py-1 text-xs font-medium tabular-nums text-foreground shadow-sm opacity-0 backdrop-blur transition-opacity"
+        dir={isAr ? "rtl" : "ltr"}
+      />
+    </div>
+  );
+}
+
+function containsPoint(f: GovFeature, lon: number, lat: number) {
+  const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+  const inRing = (ring: number[][]) => {
+    let inside = false;
+    for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+      const [xa, ya] = ring[a], [xb, yb] = ring[b];
+      if (ya > lat !== yb > lat && lon < ((xb - xa) * (lat - ya)) / (yb - ya) + xa) inside = !inside;
+    }
+    return inside;
+  };
+  return polys.some(([outer, ...holes]) => inRing(outer) && !holes.some(inRing));
+}
+
+/**
+ * Thin moving streaks that follow the wind field. Respects reduced-motion
+ * (draws still arrows instead) and stops while the tab is hidden.
+ */
+class WindParticles {
+  private canvas = document.createElement("canvas");
+  private ctx = this.canvas.getContext("2d")!;
+  private pts: { x: number; y: number; age: number }[] = [];
+  private raf = 0;
+  private active = false;
+  private moving = false;
+  private color = "rgba(236,240,246,0.6)";
+  private reduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  constructor(private map: L.Map, private uv: (lat: number, lon: number) => [number, number] | null) {
+    Object.assign(this.canvas.style, { position: "absolute", inset: "0", zIndex: "401", pointerEvents: "none" });
+    map.getContainer().appendChild(this.canvas);
+    map.on("movestart zoomstart", this.onMoveStart);
+    map.on("moveend zoomend resize", this.onMoveEnd);
+    document.addEventListener("visibilitychange", this.onVisibility);
+  }
+
+  setColor(c: string) { this.color = c; if (this.active) this.restart(); }
+  setActive(on: boolean) { this.active = on; on ? this.restart() : this.stop(true); }
+
+  destroy() {
+    this.stop(true);
+    this.map.off("movestart zoomstart", this.onMoveStart);
+    this.map.off("moveend zoomend resize", this.onMoveEnd);
+    document.removeEventListener("visibilitychange", this.onVisibility);
+    this.canvas.remove();
+  }
+
+  private onMoveStart = () => { this.moving = true; this.stop(true); };
+  private onMoveEnd = () => { this.moving = false; if (this.active) this.restart(); };
+  private onVisibility = () => { if (document.hidden) this.stop(false); else if (this.active && !this.moving) this.loop(); };
+
+  private stop(clear: boolean) {
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    if (clear) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  private restart() {
+    this.stop(true);
+    const size = this.map.getSize();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.canvas.width = size.x * dpr; this.canvas.height = size.y * dpr;
+    this.canvas.style.width = `${size.x}px`; this.canvas.style.height = `${size.y}px`;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (this.reduced) { this.drawArrows(); return; }
+    const count = Math.min(1500, Math.round((size.x * size.y) / 600));
+    this.pts = Array.from({ length: count }, () => this.spawn(true));
+    this.loop();
+  }
+
+  /** A random point that has wind (i.e. over land); falls back to anywhere after a few tries. */
+  private spawn(randomAge = false) {
+    const s = this.map.getSize();
+    let x = 0, y = 0;
+    for (let tries = 0; tries < 12; tries++) {
+      x = Math.random() * s.x; y = Math.random() * s.y;
+      const ll = this.map.containerPointToLatLng([x, y]);
+      if (this.uv(ll.lat, ll.lng)) break;
+    }
+    return { x, y, age: randomAge ? Math.floor(Math.random() * 80) : 0 };
+  }
+
+  private loop = () => {
+    if (!this.active || document.hidden) return;
+    const { ctx } = this;
+    const s = this.map.getSize();
+    // Fade old trails
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "rgba(0,0,0,0.05)";
+    ctx.fillRect(0, 0, s.x, s.y);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    const k = 0.05 * Math.pow(2, this.map.getZoom() - 5); // px per frame per km/h
+    for (let i = 0; i < this.pts.length; i++) {
+      const p = this.pts[i];
+      const ll = this.map.containerPointToLatLng([p.x, p.y]);
+      const w = this.uv(ll.lat, ll.lng);
+      if (!w || p.age++ > 90 || p.x < 0 || p.y < 0 || p.x > s.x || p.y > s.y) { this.pts[i] = this.spawn(); continue; }
+      const nx = p.x + w[0] * k, ny = p.y - w[1] * k;
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(nx, ny);
+      p.x = nx; p.y = ny;
+    }
+    ctx.stroke();
+    this.raf = requestAnimationFrame(this.loop);
+  };
+
+  private drawArrows() {
+    const { ctx } = this;
+    const s = this.map.getSize();
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = 1.2;
+    for (let y = 30; y < s.y; y += 48) for (let x = 30; x < s.x; x += 48) {
+      const ll = this.map.containerPointToLatLng([x, y]);
+      const w = this.uv(ll.lat, ll.lng);
+      if (!w) continue;
+      const len = Math.min(18, 4 + Math.hypot(w[0], w[1]) * 0.4), a = Math.atan2(-w[1], w[0]);
+      const ex = x + Math.cos(a) * len, ey = y + Math.sin(a) * len;
+      ctx.beginPath();
+      ctx.moveTo(x, y); ctx.lineTo(ex, ey);
+      ctx.lineTo(ex - Math.cos(a - 0.5) * 5, ey - Math.sin(a - 0.5) * 5);
+      ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(a + 0.5) * 5, ey - Math.sin(a + 0.5) * 5);
+      ctx.stroke();
+    }
+  }
+}

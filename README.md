@@ -39,7 +39,33 @@ A real-time HSSE (Health, Safety, Security, Environment) command platform for in
        └──────────────────────┘
 ```
 
+## 🌦️ AEGIS Observatory (`/observatory`)
 
+A public page (no sign-in): a 7-day forecast map of Oman and yellow / orange / red warnings per governorate.
+
+> **Not an official source.** The observatory is an automated aid built on open global models. Official weather
+> warnings in Oman are issued by the Oman Meteorology service of the Civil Aviation Authority; follow them first.
+> Forecasts can be wrong, and a missing warning does not mean there is no risk.
+
+| What | Source | Licence |
+|---|---|---|
+| Forecast (0.5° grid, 3-hour steps, 7 days) | [Open-Meteo](https://open-meteo.com) | CC BY 4.0 |
+| Governorate boundaries (11) | OpenStreetMap via Nominatim | ODbL |
+| Basemap and labels | Esri World Gray Canvas | Esri terms |
+
+**Warning thresholds**, applied to the worst grid point inside each governorate, per day in Oman time
+(`src/lib/observatory/warnings.ts`):
+
+| Hazard | Yellow (be aware) | Orange (be prepared) | Red (take action) |
+|---|---|---|---|
+| Rain, daily total | 10 mm | 25 mm | 50 mm |
+| Wind gusts | 45 km/h | 60 km/h | 80 km/h |
+| Heat, air temperature | 45 °C | 48 °C | 50 °C |
+| Thunderstorm (WMO 95–99) | — | thunderstorm | with hail |
+| Fog (WMO 45/48) | fog | — | — |
+
+The grid is fetched at most every 3 hours (Next data cache) and served with CDN caching, so traffic to the page
+does not reach Open-Meteo.
 
 ## 🚀 Setup
 
