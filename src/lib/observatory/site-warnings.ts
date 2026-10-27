@@ -17,6 +17,7 @@ export const EXPOSED: Record<Hazard, string[]> = {
   RAIN: ["EXCAVATION", "CONFINED_SPACE", "ELECTRICAL"],
   STORM: ["LIFTING", "HEIGHT_WORK", "ELECTRICAL", "EXCAVATION", "CONFINED_SPACE"],
   HEAT: ["HOT_WORK", "CONFINED_SPACE", "HEIGHT_WORK"],
+  DUST: ["LIFTING", "HEIGHT_WORK"],
   FOG: ["LIFTING"],
 };
 
@@ -78,7 +79,7 @@ export async function getSiteWarnings(siteIds: string[] | "*"): Promise<{ genera
 }
 
 // ── Dashboard alerts ────────────────────────────────────────
-const HAZARD_AR: Record<Hazard, string> = { RAIN: "أمطار وجريان أودية", WIND: "رياح قوية", STORM: "عواصف رعدية", HEAT: "حرارة شديدة", FOG: "ضباب" };
+const HAZARD_AR: Record<Hazard, string> = { RAIN: "أمطار وجريان أودية", WIND: "رياح قوية", STORM: "عواصف رعدية", HEAT: "حرارة شديدة", DUST: "غبار", FOG: "ضباب" };
 const LEVEL_AR: Record<Level, string> = { 0: "", 1: "أصفر", 2: "برتقالي", 3: "أحمر" };
 const ALERT_TYPE: Record<Level, string> = { 0: "INFO", 1: "WARNING", 2: "WARNING", 3: "CRITICAL" };
 const omanTime = (iso: string) =>

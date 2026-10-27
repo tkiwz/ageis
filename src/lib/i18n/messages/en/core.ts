@@ -290,18 +290,21 @@ export const coreNs = {
       warnings: "Warnings",
     },
     layers: {
+      dust: "Dust",
       temp: "Temperature",
       rain: "Rain",
       wind: "Wind",
       cloud: "Clouds",
     },
     units: {
+      dust: "µg/m³",
       temp: "°C",
       rain: "mm / 3 h",
       wind: "km/h",
       cloud: "%",
     },
     readout: {
+      dust: "{v} µg/m³ dust",
       temp: "{v}°",
       rain: "{v} mm",
       wind: "{v} km/h",
@@ -328,6 +331,7 @@ export const coreNs = {
       "3": "Take action",
     },
     hazard: {
+      DUST: "Dust",
       RAIN: "Rain and wadi flow",
       WIND: "Strong wind",
       STORM: "Thunderstorms",
@@ -335,6 +339,9 @@ export const coreNs = {
       FOG: "Fog",
     },
     advice: {
+      DUST1: "Dust in the air. People with asthma should limit time outdoors.",
+      DUST2: "Heavy dust lowers visibility. Drive slowly and stop crane lifts.",
+      DUST3: "Dust storm. Avoid travel and stay indoors with windows shut.",
       RAIN1: "Scattered rain; small wadis may flow. Keep an eye on updates.",
       RAIN2: "Heavy rain and flowing wadis expected. Don't cross wadis and keep away from their beds.",
       RAIN3: "Very heavy rain and flash-flood risk. Avoid non-essential travel and stay on high ground.",
@@ -349,6 +356,7 @@ export const coreNs = {
       FOG1: "Fog reduces visibility. Slow down and use dipped headlights.",
     },
     peak: {
+      DUST: "Up to {v} µg/m³",
       RAIN: "Up to {v} mm in the day",
       WIND: "Gusts up to {v} km/h",
       HEAT: "Up to {v}°C",

@@ -6,7 +6,7 @@
 import governorates from "./oman-governorates.json";
 import { GRID, NX, NY, type ForecastGrid } from "./grid";
 
-export type Hazard = "RAIN" | "WIND" | "STORM" | "HEAT" | "FOG";
+export type Hazard = "RAIN" | "WIND" | "STORM" | "HEAT" | "DUST" | "FOG";
 export type Level = 0 | 1 | 2 | 3; // none, yellow, orange, red
 
 /** Thresholds per level [yellow, orange, red]. */
@@ -14,6 +14,7 @@ export const THRESHOLDS = {
   RAIN: [10, 25, 50],   // mm in a day — 25+ starts wadi flow in the mountains
   WIND: [45, 60, 80],   // km/h gusts — 45 stops crane lifts, 60 damages loose structures
   HEAT: [45, 48, 50],   // °C air temperature
+  DUST: [500, 1000, 2000], // µg/m³ — visibility drops sharply above ~1000 (dust storm)
 } as const;
 
 export interface Warning {
@@ -138,13 +139,18 @@ export function computeWarnings(g: ForecastGrid): WarningsResult {
       const storm = steps.filter((_, k) => codes[k] >= 95);
       push("STORM", codes.some((c) => c === 96 || c === 99) ? 3 : 2, storm, 0);
 
+      // Dust: worst point per step (missing beyond the 5-day air-quality horizon)
+      const dusts = steps.map((t) => worst(g.dust ?? [], t));
+      const peakDust = Math.max(...dusts);
+      if (peakDust >= 0) push("DUST", levelOf(peakDust, THRESHOLDS.DUST), steps.filter((t, k) => dusts[k] >= THRESHOLDS.DUST[0]), Math.round(peakDust));
+
       // Fog (45/48) at any point
       const fog = steps.filter((t) => idx.some((n) => g.code[t * N + n] === 45 || g.code[t * N + n] === 48));
       push("FOG", 1, fog, 0);
     });
   }
 
-  const order: Record<Hazard, number> = { STORM: 0, RAIN: 1, WIND: 2, HEAT: 3, FOG: 4 };
+  const order: Record<Hazard, number> = { STORM: 0, RAIN: 1, WIND: 2, DUST: 3, HEAT: 4, FOG: 5 };
   warnings.sort((a, b) => a.day.localeCompare(b.day) || b.level - a.level || order[a.hazard] - order[b.hazard]);
   return { generatedAt: g.generatedAt, days, levels, warnings };
 }

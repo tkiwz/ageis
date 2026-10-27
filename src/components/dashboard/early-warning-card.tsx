@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CloudFog, CloudLightning, CloudRain, ExternalLink, FileWarning, ShieldCheck, Thermometer, Wind, type LucideIcon } from "lucide-react";
+import { CloudFog, CloudLightning, Haze, CloudRain, ExternalLink, FileWarning, ShieldCheck, Thermometer, Wind, type LucideIcon } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
 import { useFormat, useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/translate";
@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 // Same colours as the observatory map
 const LEVEL_COLOR = { 1: "#e3c14f", 2: "#e08a3c", 3: "#c8463d" } as Record<number, string>;
-const HAZARD_ICON: Record<Hazard, LucideIcon> = { RAIN: CloudRain, WIND: Wind, STORM: CloudLightning, HEAT: Thermometer, FOG: CloudFog };
+const HAZARD_ICON: Record<Hazard, LucideIcon> = { RAIN: CloudRain, WIND: Wind, STORM: CloudLightning, HEAT: Thermometer, DUST: Haze, FOG: CloudFog };
 
 export function EarlyWarningCard() {
   const { t, isAr } = useI18n();

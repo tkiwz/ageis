@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
-  CalendarDays, Cloud, CloudFog, CloudLightning, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
+  CalendarDays, Cloud, CloudFog, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
   ShieldCheck, Thermometer, Wind, X, type LucideIcon,
 } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
@@ -33,9 +33,9 @@ const WeatherMap = dynamic(() => import("./weather-map").then((m) => m.WeatherMa
 // Same colours as the map fills
 const LEVEL_COLOR: Record<Level, string> = { 0: "transparent", 1: "#e3c14f", 2: "#e08a3c", 3: "#c8463d" };
 const LAYERS: { id: LayerId; icon: LucideIcon }[] = [
-  { id: "temp", icon: Thermometer }, { id: "rain", icon: CloudRain }, { id: "wind", icon: Wind }, { id: "cloud", icon: Cloud },
+  { id: "temp", icon: Thermometer }, { id: "rain", icon: CloudRain }, { id: "wind", icon: Wind }, { id: "cloud", icon: Cloud }, { id: "dust", icon: Haze },
 ];
-const HAZARD_ICON: Record<Hazard, LucideIcon> = { RAIN: CloudRain, WIND: Wind, STORM: CloudLightning, HEAT: Thermometer, FOG: CloudFog };
+const HAZARD_ICON: Record<Hazard, LucideIcon> = { RAIN: CloudRain, WIND: Wind, STORM: CloudLightning, HEAT: Thermometer, DUST: Haze, FOG: CloudFog };
 const ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
 const GOV_NAMES = Object.fromEntries(
   (governorates as unknown as { features: { properties: { iso: string; name: string; nameAr: string } }[] }).features
@@ -374,7 +374,8 @@ function LayerSwitcher({ layer, onChange }: { layer: LayerId; onChange: (l: Laye
           )}
         >
           <Icon className="h-4 w-4" />
-          <span>{t(`observatory.layers.${id}`)}</span>
+          {/* Phones: only the chosen layer keeps its label */}
+          <span className={cn(layer !== id && "sr-only sm:not-sr-only")}>{t(`observatory.layers.${id}`)}</span>
         </button>
       ))}
     </div>

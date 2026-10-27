@@ -25,6 +25,8 @@ export interface ForecastGrid {
   gust: number[];   // km/h
   cloud: number[];  // %
   code: number[];   // WMO weather code
+  /** Dust µg/m³ (CAMS, ~5 days); -1 where the air-quality forecast doesn't reach */
+  dust: number[];
 }
 
 interface PointResponse {
@@ -44,6 +46,27 @@ export function gridPoints(): { lat: number; lon: number }[] {
   const pts = [];
   for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) pts.push({ lat: GRID.lat0 + j * GRID.step, lon: GRID.lon0 + i * GRID.step });
   return pts;
+}
+
+/** Dust per point at the given UTC times; -1 when unavailable. Never throws — dust is optional. */
+async function fetchDust(pts: { lat: number; lon: number }[], times: string[]): Promise<number[]> {
+  const N = pts.length, out = new Array<number>(times.length * N).fill(-1);
+  try {
+    const url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+      + `?latitude=${pts.map((p) => p.lat).join(",")}&longitude=${pts.map((p) => p.lon).join(",")}`
+      + "&hourly=dust&forecast_days=5&timezone=GMT";
+    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(40_000) });
+    if (!r.ok) return out;
+    const body = (await r.json()) as { hourly: { time: string[]; dust: (number | null)[] } }[];
+    if (!Array.isArray(body) || body.length !== N) return out;
+    const at = new Map(body[0].hourly.time.map((t, k) => [`${t}:00Z`, k]));
+    times.forEach((t, ti) => {
+      const k = at.get(t);
+      if (k === undefined) return;
+      body.forEach((p, n) => { const v = p.hourly.dust[k]; if (v !== null) out[ti * N + n] = Math.round(v); });
+    });
+  } catch { /* weather still works without dust */ }
+  return out;
 }
 
 async function fetchGrid(): Promise<ForecastGrid> {
@@ -79,7 +102,8 @@ async function fetchGrid(): Promise<ForecastGrid> {
       out.code[k] = r0(h.weather_code[t]);
     }
   });
-  return { generatedAt: new Date().toISOString(), grid: { ...GRID, nx: NX, ny: NY }, times, ...out };
+  const dust = await fetchDust(pts, times);
+  return { generatedAt: new Date().toISOString(), grid: { ...GRID, nx: NX, ny: NY }, times, ...out, dust };
 }
 
-export const getForecastGrid = unstable_cache(fetchGrid, ["observatory-grid-v1"], { revalidate: REVALIDATE_S });
+export const getForecastGrid = unstable_cache(fetchGrid, ["observatory-grid-v2"], { revalidate: REVALIDATE_S });

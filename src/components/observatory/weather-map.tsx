@@ -131,7 +131,7 @@ export function WeatherMap(props: Props) {
           if (u !== null && v !== null) text = fmt("wind", Math.hypot(u, v), (Math.atan2(-u, -v) * 180) / Math.PI + 360);
         } else {
           const v = sample(grid, fr.values, e.latlng.lat, e.latlng.lng);
-          if (v !== null) text = fmt(ly, v);
+          if (v !== null && !(ly === "dust" && v < 0)) text = fmt(ly, v); // dust < 0: beyond the 5-day air-quality forecast
         }
       } else {
         const hit = GOVS.features.find((f) => inGovernorate(f.geometry, e.latlng.lng, e.latlng.lat));

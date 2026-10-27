@@ -6,7 +6,7 @@ import { Observatory } from "@/components/observatory/observatory";
 
 const SITE = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000";
 const GOV_AR = Object.fromEntries(FEATURES.map((f) => [f.properties.iso, f.properties.nameAr]));
-const HAZARD_AR: Record<Hazard, string> = { RAIN: "أمطار", WIND: "رياح قوية", STORM: "عواصف رعدية", HEAT: "حرارة شديدة", FOG: "ضباب" };
+const HAZARD_AR: Record<Hazard, string> = { RAIN: "أمطار", WIND: "رياح قوية", STORM: "عواصف رعدية", HEAT: "حرارة شديدة", DUST: "غبار", FOG: "ضباب" };
 const LEVEL_AR: Record<Level, string> = { 0: "", 1: "أصفر", 2: "برتقالي", 3: "أحمر" };
 
 /** Today's headline for link previews (WhatsApp shows og:title + og:description). */
