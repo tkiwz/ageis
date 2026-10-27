@@ -289,6 +289,15 @@ export const coreNs = {
     allGovernorates: "All governorates",
     levelsLegend: "Warning levels",
   },
+  earlyWarning: {
+    title: "Early warning — next 72 hours",
+    subtitle: "Forecast warnings at your sites and the permits they affect",
+    none: "No weather warnings at your sites in the next 72 hours.",
+    failed: "Couldn't load the forecast",
+    openObservatory: "Open the observatory",
+    permits: "{n} permits affected",
+    reviewPermits: "Review before work starts:",
+  },
 };
 
 export type CoreMessages = DeepString<typeof coreNs>;

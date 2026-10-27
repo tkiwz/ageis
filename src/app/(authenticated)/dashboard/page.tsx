@@ -9,6 +9,7 @@ import { useApi } from "@/hooks/use-api";
 import { useFormat, useI18n } from "@/lib/i18n/client";
 import { ForecastCard } from "@/components/dashboard/forecast-card";
 import { WeatherCard } from "@/components/dashboard/weather-card";
+import { EarlyWarningCard } from "@/components/dashboard/early-warning-card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -67,6 +68,10 @@ export default function DashboardPage() {
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <ActionQueue />
         <KpiGrid data={data} loading={loading && !data} />
+      </div>
+
+      <div className="mt-6">
+        <EarlyWarningCard />
       </div>
 
       <div className="mt-6">

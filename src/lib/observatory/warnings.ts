@@ -39,7 +39,7 @@ const STEP_MS = 3 * 3600_000;
 type Ring = number[][];
 type Geometry = { type: "Polygon"; coordinates: Ring[] } | { type: "MultiPolygon"; coordinates: Ring[][] };
 interface GovFeature { properties: { iso: string; name: string; nameAr: string }; geometry: Geometry }
-const FEATURES = (governorates as unknown as { features: GovFeature[] }).features;
+export const FEATURES = (governorates as unknown as { features: GovFeature[] }).features;
 
 function inRing(lon: number, lat: number, ring: Ring) {
   let inside = false;
@@ -49,9 +49,27 @@ function inRing(lon: number, lat: number, ring: Ring) {
   }
   return inside;
 }
-function inGeometry(lon: number, lat: number, g: Geometry) {
+export function inGeometry(lon: number, lat: number, g: Geometry) {
   const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
   return polys.some(([outer, ...holes]) => inRing(lon, lat, outer) && !holes.some((h) => inRing(lon, lat, h)));
+}
+
+/**
+ * Governorate (ISO 3166-2) of a point. Coastal points just outside the simplified
+ * outline go to the governorate whose border is closest.
+ */
+export function governorateOf(lat: number, lon: number): string | null {
+  const hit = FEATURES.find((f) => inGeometry(lon, lat, f.geometry));
+  if (hit) return hit.properties.iso;
+  let best: string | null = null, bestD = 0.3; // ~30 km
+  for (const f of FEATURES) {
+    const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for (const p of polys) for (const [x, y] of p[0]) {
+      const d = Math.hypot(x - lon, y - lat);
+      if (d < bestD) { bestD = d; best = f.properties.iso; }
+    }
+  }
+  return best;
 }
 
 /** Grid indices for each governorate. Small ones (Musandam, Muscat) also take the points around them. */

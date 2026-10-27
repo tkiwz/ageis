@@ -289,4 +289,13 @@ export const coreNs: CoreMessages = {
     allGovernorates: "كل المحافظات",
     levelsLegend: "مستويات الإنذار",
   },
+  earlyWarning: {
+    title: "الإنذار المبكر — الـ 72 ساعة القادمة",
+    subtitle: "إنذارات الطقس المتوقعة في مواقعك والتصاريح المتأثرة",
+    none: "لا توجد إنذارات طقس في مواقعك خلال الـ 72 ساعة القادمة.",
+    failed: "تعذّر تحميل التوقعات",
+    openObservatory: "فتح المرصد",
+    permits: "{n} تصاريح متأثرة",
+    reviewPermits: "راجعها قبل بدء العمل:",
+  },
 };
