@@ -73,6 +73,8 @@ interface Props {
   /** Hover readout text for the current layer, e.g. "31°" */
   formatValue: (layer: LayerId, v: number, dirDeg?: number) => string;
   levelLabel: (l: Level) => string;
+  /** "4/5 models" */
+  agreeLabel: (agree: number, of: number) => string;
   /** The viewer's own position ("my location") */
   myPos?: { lat: number; lon: number } | null;
   /** Rain cells to draw on the rain layer, with a label for where each starts */
@@ -112,8 +114,8 @@ export function WeatherMap(props: Props) {
   const [zoomTick, setZoomTick] = useState(0);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
   const frame = useMemo<Frame>(() => frameOf(grid, layer, step), [grid, layer, step]);
-  const live = useRef({ frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite });
-  live.current = { frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite };
+  const live = useRef({ frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite, step, agreeLabel: props.agreeLabel });
+  live.current = { frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite, step, agreeLabel: props.agreeLabel };
 
   // ── Create the map once ───────────────────────────────────
   useEffect(() => {
@@ -162,6 +164,11 @@ export function WeatherMap(props: Props) {
         } else {
           const v = sample(grid, fr.values, e.latlng.lat, e.latlng.lng);
           if (v !== null && !(ly === "dust" && v < 0)) text = fmt(ly, v); // dust < 0: beyond the 5-day air-quality forecast
+          if (text && ly === "rain" && grid.rainModels.length > 1) {
+            const { lat0, lon0, step: st, nx, ny } = grid.grid;
+            const i = Math.round((e.latlng.lng - lon0) / st), j = Math.round((e.latlng.lat - lat0) / st);
+            if (i >= 0 && j >= 0 && i < nx && j < ny) text += ` · ${live.current.agreeLabel(grid.rainAgree[live.current.step * nx * ny + j * nx + i], grid.rainModels.length)}`;
+          }
         }
       } else {
         const hit = GOVS.features.find((f) => inGovernorate(f.geometry, e.latlng.lng, e.latlng.lat));

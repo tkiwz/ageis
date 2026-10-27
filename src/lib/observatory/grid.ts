@@ -6,6 +6,8 @@
  * no matter how many people open the observatory.
  */
 import { unstable_cache } from "next/cache";
+import { AGREE_MM, MODELS, blend } from "./models";
+import { getModelWeights } from "./calibration";
 
 export const GRID = { lat0: 16.5, lat1: 26.5, lon0: 51.5, lon1: 60, step: 0.5 } as const;
 export const NX = Math.round((GRID.lon1 - GRID.lon0) / GRID.step) + 1; // 18
@@ -27,6 +29,10 @@ export interface ForecastGrid {
   code: number[];   // WMO weather code
   /** Dust µg/m³ (CAMS, ~5 days); -1 where the air-quality forecast doesn't reach */
   dust: number[];
+  /** How many of the blended models expect rain (≥ AGREE_MM) at each point/step; `rain` is their blend */
+  rainAgree: number[];
+  /** Models that took part in the rain blend, with their weights */
+  rainModels: { id: string; weight: number }[];
 }
 
 interface PointResponse {
@@ -46,6 +52,39 @@ export function gridPoints(): { lat: number; lon: number }[] {
   const pts = [];
   for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) pts.push({ lat: GRID.lat0 + j * GRID.step, lon: GRID.lon0 + i * GRID.step });
   return pts;
+}
+
+/**
+ * Rain from several global models at the grid's steps: the weighted blend and how
+ * many models expect rain. Falls back to null (caller keeps its own rain) on failure.
+ */
+async function fetchModelRain(pts: { lat: number; lon: number }[], times: string[]) {
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast"
+      + `?latitude=${pts.map((p) => p.lat).join(",")}&longitude=${pts.map((p) => p.lon).join(",")}`
+      + `&hourly=precipitation&models=${MODELS.map((m) => m.id).join(",")}&forecast_days=7&temporal_resolution=hourly_3&timezone=GMT`;
+    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(45_000) });
+    if (!r.ok) return null;
+    const body = (await r.json()) as { hourly: Record<string, (number | null)[] | string[]> }[];
+    if (!Array.isArray(body) || body.length !== pts.length) return null;
+    const weights = await getModelWeights();
+    const at = new Map((body[0].hourly.time as string[]).map((t, k) => [`${t}:00Z`, k]));
+    const N = pts.length;
+    const mean = new Array<number>(times.length * N).fill(-1), agree = new Array<number>(times.length * N).fill(0);
+    times.forEach((t, ti) => {
+      const k = at.get(t);
+      if (k === undefined) return;
+      body.forEach((p, n) => {
+        const vals = MODELS.map((m) => (p.hourly[`precipitation_${m.id}`] as (number | null)[] | undefined)?.[k] ?? null);
+        const b = blend(vals, MODELS.map((m) => weights[m.id] ?? 1));
+        mean[ti * N + n] = b === null ? -1 : Math.round(b * 10) / 10;
+        agree[ti * N + n] = vals.filter((v) => v !== null && v >= AGREE_MM).length;
+      });
+    });
+    return { mean, agree, models: MODELS.map((m) => ({ id: m.id, weight: weights[m.id] ?? 1 })) };
+  } catch {
+    return null;
+  }
 }
 
 /** Dust per point at the given UTC times; -1 when unavailable. Never throws — dust is optional. */
@@ -102,8 +141,14 @@ async function fetchGrid(): Promise<ForecastGrid> {
       out.code[k] = r0(h.weather_code[t]);
     }
   });
-  const dust = await fetchDust(pts, times);
-  return { generatedAt: new Date().toISOString(), grid: { ...GRID, nx: NX, ny: NY }, times, ...out, dust };
+  const [dust, models] = await Promise.all([fetchDust(pts, times), fetchModelRain(pts, times)]);
+  // Rain = blend of the global models where they have data, else the single best-match model
+  const rain = models ? out.rain.map((v, k) => (models.mean[k] >= 0 ? models.mean[k] : v)) : out.rain;
+  const rainAgree = models ? models.agree : out.rain.map((v) => (v >= AGREE_MM ? 1 : 0));
+  return {
+    generatedAt: new Date().toISOString(), grid: { ...GRID, nx: NX, ny: NY }, times, ...out, rain, dust,
+    rainAgree, rainModels: models?.models ?? [{ id: "best_match", weight: 1 }],
+  };
 }
 
-export const getForecastGrid = unstable_cache(fetchGrid, ["observatory-grid-v2"], { revalidate: REVALIDATE_S });
+export const getForecastGrid = unstable_cache(fetchGrid, ["observatory-grid-v3"], { revalidate: REVALIDATE_S });

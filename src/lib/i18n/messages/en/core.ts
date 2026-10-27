@@ -212,6 +212,18 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    models: {
+      blend: "Blend of {n} global models",
+      agree: "{a}/{n} models",
+      confidence: {
+        high: "high confidence",
+        medium: "medium confidence",
+        low: "low confidence",
+      },
+      compare: "Rain by model",
+      consensus: "Blend",
+      agreeLine: "Models expecting rain",
+    },
     cyc: {
       layer: "Cyclones",
       live: "Active now",

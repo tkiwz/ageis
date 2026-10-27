@@ -263,6 +263,7 @@ export function Observatory() {
             onSelectIso={setSelectedIso}
             formatValue={formatValue}
             levelLabel={levelLabel}
+            agreeLabel={(a, n) => t("observatory.models.agree", { a: f.number(a), n: f.number(n) })}
             myPos={myPos}
             tracks={dayTracks.map((track) => ({ track, startLabel: trackLabel(track) }))}
             layer={layer === "sat" || layer === "cyc" ? "temp" : layer}
@@ -342,7 +343,7 @@ export function Observatory() {
               />
             )}
             {layer !== "sat" && layer !== "cyc" && <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
-              <Legend layer={layer} dark={dark} />
+              <Legend layer={layer} dark={dark} note={layer === "rain" && grid.rainModels.length > 1 ? t("observatory.models.blend", { n: f.number(grid.rainModels.length) }) : undefined} />
               <TimeBar
                 times={grid.times} days={days} step={cur} nowStep={nowStep} playing={playing}
                 onStep={(s) => { setPlaying(false); setStep(s); }}
@@ -536,6 +537,9 @@ function RainTracksCard({ grid, tracks, townName, onPick }: {
                       : t("observatory.tracks.stays")}
                     {" · "}{t("observatory.tracks.until", { time: endOf(b.t) })}
                     {" · "}{t("observatory.tracks.peak", { v: f.number(Math.round(tr.peakMm * 10) / 10) })}
+                    {" · "}<span className={cn(tr.confidence >= 0.7 ? "text-success" : tr.confidence >= 0.4 ? "text-warning" : "text-muted-foreground")}>
+                      {t(`observatory.models.confidence.${tr.confidence >= 0.7 ? "high" : tr.confidence >= 0.4 ? "medium" : "low"}`)}
+                    </span>
                   </div>
                 </button>
               </li>
@@ -645,7 +649,7 @@ function LayerSwitcher({ layer, onChange }: { layer: LayerId | "sat" | "cyc"; on
   );
 }
 
-function Legend({ layer, dark }: { layer: LayerId; dark: boolean }) {
+function Legend({ layer, dark, note }: { layer: LayerId; dark: boolean; note?: string }) {
   const { t } = useI18n();
   const f = useFormat();
   const ticks = LEGEND[layer];
@@ -659,6 +663,7 @@ function Legend({ layer, dark }: { layer: LayerId; dark: boolean }) {
       <div className="mt-1 flex justify-between text-[10px] tabular-nums text-muted-foreground" dir="ltr">
         {ticks.map((v) => <span key={v}>{f.number(v)}</span>)}
       </div>
+      {note && <div className="mb-1 text-[10px] font-medium text-info">{note}</div>}
       {/* Plain words under each colour band, so the map reads without numbers */}
       <div className="mt-0.5 grid text-center text-[10px] font-medium text-foreground/80" dir="ltr" style={{ gridTemplateColumns: `repeat(${BANDS[layer]}, 1fr)` }}>
         {Array.from({ length: BANDS[layer] }, (_, k) => <span key={k} className="truncate px-0.5">{t(`observatory.bands.${layer}.${k}` as MessageKey)}</span>)}

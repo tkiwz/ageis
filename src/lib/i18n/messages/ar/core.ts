@@ -212,6 +212,18 @@ export const coreNs: CoreMessages = {
     showLess: "عرض أقل",
   },
   observatory: {
+    models: {
+      blend: "إجماع {n} نماذج عالمية",
+      agree: "{a}/{n} نماذج",
+      confidence: {
+        high: "ثقة عالية",
+        medium: "ثقة متوسطة",
+        low: "ثقة منخفضة",
+      },
+      compare: "المطر حسب كل نموذج",
+      consensus: "الإجماع",
+      agreeLine: "النماذج المتوقعة للمطر",
+    },
     cyc: {
       layer: "الأعاصير",
       live: "النشطة الآن",
