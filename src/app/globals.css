@@ -167,3 +167,10 @@
   backdrop-filter: blur(4px); }
 .obs-sym-t { font-size: 12px; font-weight: 600; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
 .obs-sym-n { margin-top: 1px; font-size: 10px; color: hsl(var(--foreground)); text-shadow: 0 0 3px hsl(var(--background)), 0 0 3px hsl(var(--background)); white-space: nowrap; }
+/* Rain cells: ring where rain starts to form */
+.obs-genesis-wrap { display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.obs-genesis { width: 24px; height: 24px; border-radius: 999px; border: 2.5px solid #4a86d6; background: rgb(74 134 214 / 0.18); }
+@media (prefers-reduced-motion: no-preference) { .obs-genesis { animation: obs-genesis 2s ease-out infinite; } }
+@keyframes obs-genesis { 0% { box-shadow: 0 0 0 0 rgb(74 134 214 / 0.55); } 100% { box-shadow: 0 0 0 14px rgb(74 134 214 / 0); } }
+.obs-genesis-l { margin-top: 2px; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 600; white-space: nowrap;
+  color: hsl(var(--foreground)); background: hsl(var(--background) / 0.85); border: 1px solid hsl(var(--border) / 0.8); }

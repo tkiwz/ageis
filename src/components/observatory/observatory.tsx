@@ -21,7 +21,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { BANDS, LEGEND, frameOf, govAt, legendGradient, sample, type GovInfo, type LayerId } from "./field";
 import type { MapMode } from "./weather-map";
-import { ForecastView } from "./forecast-view";
+import { ForecastView, nearestWilayat } from "./forecast-view";
+import { directionKey, rainTracks, type RainTrack } from "./rain-tracks";
 
 type Tab = MapMode | "forecast";
 
@@ -85,6 +86,17 @@ export function Observatory() {
     const id = window.setInterval(() => setStep((s) => ((s ?? nowStep) + 1) % grid.times.length), 900);
     return () => window.clearInterval(id);
   }, [playing, grid, nowStep]);
+
+  // Rain cells over the whole forecast; the map shows those of the chosen day
+  const tracks = useMemo(() => (grid ? rainTracks(grid) : []), [grid]);
+  const curDay = grid ? omanDay(grid.times[cur]) : "";
+  const dayTracks = useMemo(
+    () => (grid ? tracks.filter((tr) => tr.steps.some((s) => omanDay(grid.times[s.t]) === curDay)) : []),
+    [tracks, grid, curDay],
+  );
+  const townName = (lat: number, lon: number) => { const w = nearestWilayat(lat, lon); return isAr ? w.nameAr : w.name; };
+  const trackLabel = (tr: RainTrack) =>
+    `${t("observatory.tracks.start")} · ${f.date(grid!.times[tr.steps[0].t], { weekday: "short", hour: "numeric" })}`;
 
   const levelsForDay = useMemo(() => {
     const out: Record<string, Level> = {};
@@ -218,6 +230,7 @@ export function Observatory() {
             formatValue={formatValue}
             levelLabel={levelLabel}
             myPos={myPos}
+            tracks={dayTracks.map((track) => ({ track, startLabel: trackLabel(track) }))}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -262,6 +275,14 @@ export function Observatory() {
         {grid && tab === "layers" && (
           <>
             <LayerSwitcher layer={layer} onChange={setLayer} />
+            {layer === "rain" && (
+              <RainTracksCard
+                grid={grid}
+                tracks={tracks.filter((tr) => tr.steps[tr.steps.length - 1].t >= nowStep).slice(0, 6)}
+                townName={townName}
+                onPick={(tr) => { setPlaying(false); setStep(tr.steps[0].t); }}
+              />
+            )}
             <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
               <Legend layer={layer} dark={dark} />
               <TimeBar
@@ -285,6 +306,59 @@ export function Observatory() {
           />
         )}
       </main>
+    </div>
+  );
+}
+
+/** Plain-language list of rain cells: where they form, which way they go, until when. */
+function RainTracksCard({ grid, tracks, townName, onPick }: {
+  grid: ForecastGrid; tracks: RainTrack[]; townName: (lat: number, lon: number) => string; onPick: (tr: RainTrack) => void;
+}) {
+  const { t } = useI18n();
+  const f = useFormat();
+  const [open, setOpen] = useState(false); // phones: folded into a button
+  const when = (k: number, o: Intl.DateTimeFormatOptions) => f.date(grid.times[k], o);
+  // A step covers 3 hours, so a cell last seen at step k rains until k + 3 h
+  const endOf = (k: number) => f.date(new Date(Date.parse(grid.times[k]) + 3 * 3600_000), { hour: "numeric" });
+  return (
+    <div className="absolute start-3 top-[4.25rem] z-[1000] w-80 max-w-[calc(100%-1.5rem)] sm:start-5 sm:top-[5.25rem]">
+    <button onClick={() => setOpen((o) => !o)} className={cn(PANEL, "flex h-9 items-center gap-1.5 px-3 text-xs font-medium sm:hidden")} aria-expanded={open}>
+      <CloudRain className="h-4 w-4 text-info" />{t("observatory.tracks.title")}
+    </button>
+    <div className={cn(PANEL, "mt-2 p-3 sm:mt-0", open ? "block" : "hidden sm:block")}>
+      <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><CloudRain className="h-4 w-4 text-info" />{t("observatory.tracks.title")}</div>
+      {tracks.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("observatory.tracks.none")}</p>
+      ) : (
+        <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+          {tracks.map((tr) => {
+            const a = tr.steps[0], b = tr.steps[tr.steps.length - 1];
+            const from = townName(a.lat, a.lon), to = townName(b.lat, b.lon);
+            const moving = tr.bearing !== null && from !== to;
+            return (
+              <li key={tr.id}>
+                <button onClick={() => onPick(tr)} className="w-full rounded-lg border border-border/50 p-2 text-start text-xs transition-colors hover:bg-accent/60">
+                  <div className="font-semibold">
+                    {when(a.t, { weekday: "long", hour: "numeric" })} · {t(tr.existing ? "observatory.tracks.existing" : "observatory.tracks.forms", { town: from })}
+                  </div>
+                  <div className="mt-0.5 text-muted-foreground">
+                    {moving
+                      ? t("observatory.tracks.moves", { dir: t(`observatory.dir.${directionKey(tr.bearing!)}`), town: to })
+                      : t("observatory.tracks.stays")}
+                    {" · "}{t("observatory.tracks.until", { time: endOf(b.t) })}
+                    {" · "}{t("observatory.tracks.peak", { v: f.number(Math.round(tr.peakMm * 10) / 10) })}
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="mt-2 flex items-center gap-3 border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-full border-2 border-[#4a86d6]" />{t("observatory.tracks.legendStart")}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-5 border-t-2 border-dashed border-[#4a86d6]" />{t("observatory.tracks.legendPath")}</span>
+      </div>
+    </div>
     </div>
   );
 }

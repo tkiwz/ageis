@@ -9,6 +9,7 @@ import governorates from "@/lib/observatory/oman-governorates.json";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Cloud, CloudFog, CloudLightning, CloudMoon, CloudRain, CloudRainWind, CloudSun, Moon, Sun } from "lucide-react";
 import type { Wilayat } from "@/lib/observatory/place";
+import type { RainTrack } from "./rain-tracks";
 import wilayatsJson from "@/lib/observatory/wilayats.json";
 import { frameOf, inGovernorate, landMask, pointWeather, renderFrame, sample, type Frame, type LayerId, type Polygons, type Symbol } from "./field";
 
@@ -70,10 +71,12 @@ interface Props {
   levelLabel: (l: Level) => string;
   /** The viewer's own position ("my location") */
   myPos?: { lat: number; lon: number } | null;
+  /** Rain cells to draw on the rain layer, with a label for where each starts */
+  tracks?: { track: RainTrack; startLabel: string }[];
 }
 
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos } = props;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks } = props;
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const tiles = useRef<{ base: L.TileLayer; labels: L.TileLayer } | null>(null);
@@ -83,6 +86,7 @@ export function WeatherMap(props: Props) {
   const zoom = useRef<L.Control.Zoom | null>(null);
   const me = useRef<L.CircleMarker | null>(null);
   const symbols = useRef<L.LayerGroup | null>(null);
+  const trackLayer = useRef<L.LayerGroup | null>(null);
   const readout = useRef<HTMLDivElement>(null);
   const [zoomTick, setZoomTick] = useState(0);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
@@ -104,6 +108,9 @@ export function WeatherMap(props: Props) {
     m.createPane("labels").style.zIndex = "450";
     m.createPane("symbols").style.zIndex = "460";
     symbols.current = L.layerGroup([], { pane: "symbols" }).addTo(m);
+    m.createPane("tracks").style.zIndex = "465"; // above town symbols so "where it starts" stays readable
+    m.getPane("tracks")!.style.pointerEvents = "none";
+    trackLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
     m.on("zoomend", () => setZoomTick((z) => z + 1));
     m.getPane("labels")!.style.pointerEvents = "none";
 
@@ -156,7 +163,7 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -213,6 +220,42 @@ export function WeatherMap(props: Props) {
       }).addTo(grp);
     }
   }, [grid, step, mode, isAr, zoomTick]);
+
+  // ── Rain cells: where they form, where they go ───────────────
+  useEffect(() => {
+    const grp = trackLayer.current;
+    if (!grp) return;
+    grp.clearLayers();
+    if (mode !== "layers" || layer !== "rain" || !tracks) return;
+    const colour = dark ? "#9cc9ff" : "#2f6fbf";
+    for (const { track, startLabel } of tracks) {
+      const pts = track.steps.map((s) => L.latLng(s.lat, s.lon));
+      const past = track.steps.filter((s) => s.t <= step).map((s) => L.latLng(s.lat, s.lon));
+      // Whole path dashed (expected), the part already "lived" by the slider solid
+      if (pts.length > 1) L.polyline(pts, { pane: "tracks", color: colour, weight: 2.5, opacity: 0.85, dashArray: "6 6" }).addTo(grp);
+      if (past.length > 1) L.polyline(past, { pane: "tracks", color: colour, weight: 3, opacity: 0.95 }).addTo(grp);
+      track.steps.forEach((s) =>
+        L.circleMarker([s.lat, s.lon], { pane: "tracks", radius: s.t === step ? 6 : 2.5, color: colour, weight: s.t === step ? 2 : 1, fillColor: colour, fillOpacity: s.t === step ? 0.35 : 0.9 }).addTo(grp));
+      // Arrow at the end, pointing the way the cell travels
+      if (track.bearing !== null && pts.length > 1) {
+        const end = pts[pts.length - 1];
+        L.marker(end, {
+          pane: "tracks", interactive: false,
+          icon: L.divIcon({ className: "", iconSize: [18, 18], iconAnchor: [9, 9],
+            html: `<svg width="18" height="18" viewBox="0 0 18 18" style="transform:rotate(${track.bearing}deg)"><path d="M9 1 L15 15 L9 11 L3 15 Z" fill="${colour}"/></svg>` }),
+        }).addTo(grp);
+      }
+      // Where it starts to form
+      if (!track.existing) {
+        const s0 = track.steps[0];
+        L.marker([s0.lat, s0.lon], {
+          pane: "tracks", interactive: false,
+          icon: L.divIcon({ className: "obs-genesis-wrap", iconSize: [120, 44], iconAnchor: [60, 12],
+            html: `<div class="obs-genesis"></div><div class="obs-genesis-l">${startLabel}</div>` }),
+        }).addTo(grp);
+      }
+    }
+  }, [tracks, mode, layer, step, dark]);
 
   // "My location": a calm dot, and the map moves there
   useEffect(() => {

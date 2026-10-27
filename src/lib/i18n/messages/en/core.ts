@@ -212,6 +212,30 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    tracks: {
+      title: "Where rain forms and where it goes",
+      none: "No rain cells in the next 7 days.",
+      forms: "Forms near {town}",
+      existing: "Rain near {town}",
+      moves: "moving {dir} towards {town}",
+      stays: "stays over the area",
+      until: "until {time}",
+      peak: "up to {v} mm in 3 h",
+      start: "Starts",
+      show: "Show on map",
+      legendStart: "Where rain starts",
+      legendPath: "Expected path",
+    },
+    dir: {
+      N: "north",
+      NE: "north-east",
+      E: "east",
+      SE: "south-east",
+      S: "south",
+      SW: "south-west",
+      W: "west",
+      NW: "north-west",
+    },
     bands: {
       temp: {
         "0": "Cool",
