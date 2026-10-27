@@ -212,6 +212,18 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    acc: {
+      title: "How accurate are the models here?",
+      desc: "Each model's next-day forecast checked hour by hour against what Oman's airports reported ({stations}), last {days} days. The blend gives more weight to the better models.",
+      model: "Model",
+      temp: "Temperature error",
+      rain: "Rain caught",
+      weight: "Weight in blend",
+      noRain: "not enough rain yet",
+      best: "Most accurate",
+      building: "Collecting observations — scores appear after the first day.",
+      degrees: "±{v}°",
+    },
     models: {
       blend: "Blend of {n} global models",
       agree: "{a}/{n} models",
@@ -324,6 +336,8 @@ export const coreNs = {
       },
     },
     fc: {
+      heavyChance: "Heavy (5 mm+): {v}%",
+      ensembleNote: "Chance of rain = share of the {n} runs of the ECMWF ensemble that rain at that time.",
       tab: "Forecast",
       pick: "Wilayat",
       nearest: "Nearest to me",

@@ -13,6 +13,7 @@ import type { PlaceForecast, Wilayat } from "@/lib/observatory/place";
 import type { Level, Warning } from "@/lib/observatory/warnings";
 import wilayatsJson from "@/lib/observatory/wilayats.json";
 import { GOV_FEATURES } from "./field";
+import { AccuracyCard } from "./accuracy-card";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,7 +70,8 @@ export function ForecastView({ warnings, myPos, onLocate, onShowOnMap }: {
       .filter(({ time }) => time.startsWith(date) && (day > 0 || Date.parse(time) >= now))
       .map(({ k, time }) => ({
         label: f.date(time, { hour: "numeric" }),
-        temp: data.hourly.temp[k], feels: data.hourly.feels[k], rain: data.hourly.rain[k], prob: data.hourly.rainProb[k],
+        temp: data.hourly.temp[k], feels: data.hourly.feels[k], rain: data.hourly.rain[k],
+        prob: data.ensemble ? Math.round(data.ensemble.hourly[k] * 100) : data.hourly.rainProb[k],
         wind: data.hourly.wind[k], gust: data.hourly.gust[k], dir: data.hourly.dir[k],
       }));
   }, [data, day, f]);
@@ -163,9 +165,18 @@ export function ForecastView({ warnings, myPos, onLocate, onShowOnMap }: {
                   <span className="text-xs font-medium">{k === 0 ? t("observatory.fc.today") : f.date(`${d}T08:00:00Z`, { weekday: "short" })}</span>
                   <Icon className="h-6 w-6 text-muted-foreground" strokeWidth={1.6} />
                   <span className="text-sm font-semibold tabular-nums">{f.number(Math.round(data.daily.max[k]))}°<span className="ms-1 font-normal text-muted-foreground">{f.number(Math.round(data.daily.min[k]))}°</span></span>
-                  <span className={cn("text-[11px] tabular-nums", data.daily.rainProb[k] >= 40 ? "text-info" : "text-muted-foreground")}>
-                    {t("observatory.fc.rainChance", { v: f.number(Math.round(data.daily.rainProb[k])) })}
-                  </span>
+                  {(() => {
+                    // Prefer the 51-run ECMWF ensemble: share of runs with at least 1 mm that day
+                    const p = data.ensemble ? Math.round(data.ensemble.day1mm[k] * 100) : Math.round(data.daily.rainProb[k]);
+                    return (
+                      <span className={cn("text-[11px] tabular-nums", p >= 40 ? "text-info" : "text-muted-foreground")}>
+                        {t("observatory.fc.rainChance", { v: f.number(p) })}
+                        {data.ensemble && data.ensemble.day5mm[k] >= 0.2 && (
+                          <span className="block text-[10px] text-info">{t("observatory.fc.heavyChance", { v: f.number(Math.round(data.ensemble.day5mm[k] * 100)) })}</span>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </button>
               );
             })}
@@ -176,7 +187,8 @@ export function ForecastView({ warnings, myPos, onLocate, onShowOnMap }: {
 
         {/* Hour by hour */}
         <section className="rounded-2xl border border-border/60 bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold">{t("observatory.fc.hourly")}</h2>
+          <h2 className="mb-1 text-sm font-semibold">{t("observatory.fc.hourly")}</h2>
+          {data?.ensemble && <p className="mb-3 text-[11px] text-muted-foreground">{t("observatory.fc.ensembleNote", { n: f.number(data.ensemble.members) })}</p>}
           {loading && !data ? (
             <Skeleton className="h-56 w-full" />
           ) : (
@@ -206,7 +218,8 @@ export function ForecastView({ warnings, myPos, onLocate, onShowOnMap }: {
             </div>
           )}
         </section>
-        <p className="text-center text-[11px] text-muted-foreground">Open-Meteo · © OpenStreetMap</p>
+        <AccuracyCard />
+        <p className="text-center text-[11px] text-muted-foreground">Open-Meteo · aviationweather.gov · © OpenStreetMap</p>
       </div>
     </div>
   );

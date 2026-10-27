@@ -1289,3 +1289,20 @@ model IncidentPhoto {
 
   @@index([incidentId])
 }
+
+/// Daily score of each global model against airport observations (METAR), per station
+model ModelVerification {
+  id            String   @id @default(cuid())
+  day           DateTime @db.Date
+  station       String
+  model         String
+  hours         Int
+  tempAbsErrSum Float
+  rainHits      Int
+  rainMisses    Int
+  rainFalse     Int
+  rainNone      Int
+  createdAt     DateTime @default(now())
+
+  @@unique([day, station, model])
+}

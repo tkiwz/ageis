@@ -14,6 +14,27 @@ export interface PlaceForecast {
   current: { time: string; temp: number; feels: number; humidity: number; code: number; wind: number; gust: number; dir: number };
   hourly: { time: string[]; temp: number[]; feels: number[]; humidity: number[]; rainProb: number[]; rain: number[]; code: number[]; wind: number[]; gust: number[]; dir: number[]; uv: number[] };
   daily: { date: string[]; code: number[]; max: number[]; min: number[]; rain: number[]; rainProb: number[]; gust: number[]; sunrise: string[]; sunset: string[]; uv: number[] };
+  /** ECMWF ensemble (51 runs): share of runs with ≥1 mm / ≥5 mm that day, and with ≥0.2 mm each hour */
+  ensemble: { members: number; day1mm: number[]; day5mm: number[]; hourly: number[] } | null;
+}
+
+/** Probabilities from the 51-member ECMWF ensemble. Optional: null if it fails. */
+async function fetchEnsemble(place: Wilayat, dates: string[], hours: string[]): Promise<PlaceForecast["ensemble"]> {
+  try {
+    const r = await fetch("https://ensemble-api.open-meteo.com/v1/ensemble"
+      + `?latitude=${place.lat}&longitude=${place.lon}&hourly=precipitation&models=ecmwf_ifs025&forecast_days=7&timezone=Asia%2FMuscat`,
+      { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    if (!r.ok) return null;
+    const h = (await r.json()).hourly as Record<string, (number | null)[] | string[]>;
+    const runs = Object.keys(h).filter((k) => k.startsWith("precipitation")).map((k) => h[k] as (number | null)[]);
+    const times = (h.time as string[]).map(iso);
+    const idx = new Map(times.map((t, k) => [t, k]));
+    const hourly = hours.map((t) => { const k = idx.get(t); return k === undefined ? 0 : runs.filter((m) => (m[k] ?? 0) >= 0.2).length / runs.length; });
+    const daily = (mm: number) => dates.map((d) => runs.filter((m) => times.reduce((s, t, k) => (t.startsWith(d) ? s + (m[k] ?? 0) : s), 0) >= mm).length / runs.length);
+    return { members: runs.length, day1mm: daily(1), day5mm: daily(5), hourly: hourly.map((p) => Math.round(p * 100) / 100) };
+  } catch {
+    return null;
+  }
 }
 
 const OMAN = "+04:00";
@@ -32,7 +53,9 @@ async function fetchPlace(id: string): Promise<PlaceForecast | null> {
   if (!r.ok) throw new Error(`open-meteo ${r.status}`);
   const j = await r.json();
   const c = j.current, h = j.hourly, d = j.daily;
+  const ensemble = await fetchEnsemble(place, d.time, h.time.map(iso));
   return {
+    ensemble,
     place,
     generatedAt: new Date().toISOString(),
     current: {
@@ -52,4 +75,4 @@ async function fetchPlace(id: string): Promise<PlaceForecast | null> {
   };
 }
 
-export const getPlaceForecast = unstable_cache(fetchPlace, ["observatory-place-v1"], { revalidate: 3600 });
+export const getPlaceForecast = unstable_cache(fetchPlace, ["observatory-place-v2"], { revalidate: 3600 });
