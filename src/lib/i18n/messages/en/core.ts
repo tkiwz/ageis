@@ -212,6 +212,16 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    windy: {
+      tab: "Windy",
+      rain: "Rain",
+      wind: "Wind",
+      temp: "Temperature",
+      clouds: "Clouds",
+      thunder: "Thunderstorms",
+      dust: "Dust",
+      note: "Map by Windy.com — for comparison",
+    },
     panel: {
       title: "Layers",
       base: "Background",

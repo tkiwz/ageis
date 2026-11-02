@@ -212,6 +212,16 @@ export const coreNs: CoreMessages = {
     showLess: "عرض أقل",
   },
   observatory: {
+    windy: {
+      tab: "Windy",
+      rain: "الأمطار",
+      wind: "الرياح",
+      temp: "الحرارة",
+      clouds: "الغيوم",
+      thunder: "العواصف الرعدية",
+      dust: "الغبار",
+      note: "الخريطة من Windy.com — للمقارنة",
+    },
     panel: {
       title: "الطبقات",
       base: "الخلفية",
