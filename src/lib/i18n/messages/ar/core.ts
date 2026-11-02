@@ -212,6 +212,26 @@ export const coreNs: CoreMessages = {
     showLess: "عرض أقل",
   },
   observatory: {
+    panel: {
+      title: "الطبقات",
+      base: "الخلفية",
+      baseLive: "القمر الحي فوق التضاريس",
+      baseCalm: "خريطة هادئة",
+      weather: "الطقس",
+      overlays: "على الخريطة",
+      stations: "المحطات (رصد فعلي)",
+      symbols: "توقعات المدن",
+      forming: "تشكّل العواصف",
+      desc: {
+        temp: "حرارة الجو",
+        rain: "المطر ووين يتكوّن ويتجه",
+        wind: "سرعة الرياح واتجاهها",
+        cloud: "كمية الغيوم",
+        dust: "الغبار والعواصف الرملية",
+        sat: "صور الأقمار آخر 3 ساعات",
+        cyc: "الأعاصير المدارية",
+      },
+    },
     nc: {
       away: "على بعد {km} كم من {town}",
       chip: "{n} تشكّل عاصفة الآن",

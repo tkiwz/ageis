@@ -12,6 +12,7 @@ import type { Wilayat } from "@/lib/observatory/place";
 import type { RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import type { FormingCell } from "@/lib/observatory/nowcast";
+import type { StationReading } from "@/lib/observatory/stations";
 import wilayatsJson from "@/lib/observatory/wilayats.json";
 import { frameOf, inGovernorate, landMask, pointWeather, renderFrame, sample, type Frame, type LayerId, type Polygons, type Symbol } from "./field";
 
@@ -47,6 +48,16 @@ export const LEVEL_COLOR: Record<Level, string> = { 0: "transparent", 1: "#e3c14
 
 // Esri canvas basemaps: quiet greys, labels drawn above the weather layer
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas";
+const EUMETSAT_WMS = "https://view.eumetsat.int/geoserver/wms";
+const ESRI_IMAGERY = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const ESRI_HILLSHADE = "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}";
+const ESRI_PLACES = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
+/** Station dot colour by measured temperature (same calm ramp as the map). */
+function tempColour(c: number | null) {
+  if (c === null) return "#94a3b8";
+  return c >= 42 ? "#c96a48" : c >= 36 ? "#dc9b5b" : c >= 30 ? "#d9c98a" : c >= 24 ? "#7fb69a" : c >= 18 ? "#3f8f9f" : "#3b5b92";
+}
+
 const TILES = {
   dark: { base: `${ESRI}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, labels: `${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}` },
   light: { base: `${ESRI}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, labels: `${ESRI}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}` },
@@ -82,6 +93,12 @@ interface Props {
   tracks?: { track: RainTrack; startLabel: string }[];
   /** Live satellite instead of the forecast: WMS layer name, frame times, the one shown */
   satellite?: { wms: string; times: string[]; frame: number } | null;
+  /** Base map: real terrain under the live Meteosat picture, or the calm grey map */
+  base?: "live" | "calm";
+  /** Measured readings at airport stations */
+  stations?: StationReading[] | null;
+  /** Show the forecast weather symbols over towns */
+  showSymbols?: boolean;
   /** Storm clouds forming now (satellite), with their label */
   forming?: { cell: FormingCell; label: string }[];
   /** Cyclone view: live storms, and a past storm being replayed (track up to `progress` 0..1) */
@@ -96,14 +113,13 @@ interface Props {
 export const CAT_COLOR: Record<string, string> = { TD: "#7fb0dc", TS: "#e3c14f", HU: "#c8463d", CY: "#c8463d", SCS: "#e08a3c" };
 const REGION_BOUNDS = L.latLngBounds([-8, 35], [33, 95]);
 
-const EUMETSAT_WMS = "https://view.eumetsat.int/geoserver/wms";
 
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming } = props;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming, base = "live", stations, showSymbols = true } = props;
   const showForecast = mode === "layers" && !satellite && !cyclones;
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
-  const tiles = useRef<{ base: L.TileLayer; labels: L.TileLayer } | null>(null);
+  const tiles = useRef<{ base: L.TileLayer; labels: L.TileLayer; hill?: L.TileLayer } | null>(null);
   const overlay = useRef<L.ImageOverlay | null>(null);
   const govLayer = useRef<L.GeoJSON | null>(null);
   const particles = useRef<WindParticles | null>(null);
@@ -114,6 +130,8 @@ export function WeatherMap(props: Props) {
   const satFrames = useRef<{ key: string; layers: L.TileLayer.WMS[] } | null>(null);
   const cycLayer = useRef<L.LayerGroup | null>(null);
   const formLayer = useRef<L.LayerGroup | null>(null);
+  const stationLayer = useRef<L.LayerGroup | null>(null);
+  const liveIr = useRef<L.TileLayer.WMS | null>(null);
   const readout = useRef<HTMLDivElement>(null);
   const [zoomTick, setZoomTick] = useState(0);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
@@ -140,6 +158,7 @@ export function WeatherMap(props: Props) {
     trackLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
     cycLayer.current = L.layerGroup().addTo(m);
     formLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
+    stationLayer.current = L.layerGroup([], { pane: "symbols" }).addTo(m);
     m.on("zoomend", () => setZoomTick((z) => z + 1));
     m.getPane("labels")!.style.pointerEvents = "none";
 
@@ -198,26 +217,66 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null; formLayer.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null; formLayer.current = null; stationLayer.current = null; liveIr.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Basemap follows the theme ─────────────────────────────
+  // ── Basemap: real terrain + live satellite, or calm grey following the theme ──
   useEffect(() => {
     const m = map.current;
     if (!m) return;
     tiles.current?.base.remove();
     tiles.current?.labels.remove();
-    const set = dark ? TILES.dark : TILES.light;
+    tiles.current?.hill?.remove();
+    liveIr.current?.remove();
+    liveIr.current = null;
     const attribution = "Esri · © OpenStreetMap · Open-Meteo";
-    tiles.current = {
-      base: L.tileLayer(set.base, { attribution, maxZoom: 16 }).addTo(m),
-      labels: L.tileLayer(set.labels, { maxZoom: 16, pane: "labels" }).addTo(m),
-    };
+    if (base === "live") {
+      tiles.current = {
+        base: L.tileLayer(ESRI_IMAGERY, { attribution: `${attribution} · EUMETSAT`, maxZoom: 16 }).addTo(m),
+        hill: L.tileLayer(ESRI_HILLSHADE, { maxZoom: 16, className: "obs-hillshade" }).addTo(m),
+        labels: L.tileLayer(ESRI_PLACES, { maxZoom: 16, pane: "labels" }).addTo(m),
+      };
+      // Latest Meteosat infrared, blended so clouds glow white over the real ground
+      liveIr.current = L.tileLayer.wms(EUMETSAT_WMS, {
+        layers: "msg_iodc:ir108", format: "image/png", transparent: true, version: "1.3.0", className: "obs-live-ir", maxZoom: 12,
+      }).addTo(m);
+    } else {
+      const set = dark ? TILES.dark : TILES.light;
+      tiles.current = {
+        base: L.tileLayer(set.base, { attribution, maxZoom: 16 }).addTo(m),
+        labels: L.tileLayer(set.labels, { maxZoom: 16, pane: "labels" }).addTo(m),
+      };
+    }
     tiles.current.base.bringToBack();
-    particles.current?.setColor(dark ? "rgba(236,240,246,0.6)" : "rgba(38,52,72,0.55)");
-  }, [dark]);
+    particles.current?.setColor(dark || base === "live" ? "rgba(236,240,246,0.6)" : "rgba(38,52,72,0.55)");
+  }, [dark, base]);
+
+  // Live satellite picture refreshes every 15 minutes
+  useEffect(() => {
+    if (base !== "live") return;
+    const id = window.setInterval(() => liveIr.current?.setParams({ _t: String(Date.now()) } as unknown as L.WMSParams), 15 * 60_000);
+    return () => window.clearInterval(id);
+  }, [base]);
+
+  // Hide the live picture while a full satellite product or the cyclone view is on
+  useEffect(() => { liveIr.current?.setOpacity(satellite || cyclones ? 0 : 0.9); }, [satellite, cyclones, base]);
+
+  // ── Measured station readings (NCM-style dots with numbers) ──
+  useEffect(() => {
+    const grp = stationLayer.current;
+    if (!grp) return;
+    grp.clearLayers();
+    if (mode !== "layers" || cyclones || !stations) return;
+    for (const s of stations) {
+      const arrow = s.windDir === null ? "" : `<span class="obs-st-w" style="transform:rotate(${(s.windDir + 180) % 360}deg)">↑</span>`;
+      const html = `<div class="obs-st"><span class="obs-st-dot" style="background:${tempColour(s.temp)}"></span>`
+        + `<b>${s.temp === null ? "—" : Math.round(s.temp)}°</b>${arrow}<span class="obs-st-k">${s.windKmh ?? ""}</span></div>`
+        + `<div class="obs-sym-n">${isAr ? s.nameAr : s.name}</div>`;
+      L.marker([s.lat, s.lon], { pane: "symbols", interactive: false, icon: L.divIcon({ className: "obs-sym-wrap", html, iconSize: [90, 40], iconAnchor: [45, 13] }) }).addTo(grp);
+    }
+  }, [stations, mode, cyclones, isAr]);
 
   // ── Weather raster ────────────────────────────────────────
   useEffect(() => {
@@ -236,7 +295,7 @@ export function WeatherMap(props: Props) {
     const m = map.current, grp = symbols.current;
     if (!m || !grp) return;
     grp.clearLayers();
-    if (!showForecast) return;
+    if (!showForecast || !showSymbols) return;
     const all = m.getZoom() >= 7.5;
     const placed: L.Point[] = [];
     for (const w of BY_PRIORITY) {
@@ -254,7 +313,7 @@ export function WeatherMap(props: Props) {
         icon: L.divIcon({ className: "obs-sym-wrap", html, iconSize: [64, all ? 40 : 26], iconAnchor: [32, 13] }),
       }).addTo(grp);
     }
-  }, [grid, step, showForecast, isAr, zoomTick]);
+  }, [grid, step, showForecast, showSymbols, isAr, zoomTick]);
 
   // ── Rain cells: where they form, where they go ───────────────
   useEffect(() => {

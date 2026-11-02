@@ -25,6 +25,7 @@ import { ForecastView, nearestWilayat } from "./forecast-view";
 import { directionKey, rainTracks, type RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import type { Nowcast } from "@/lib/observatory/nowcast";
+import type { StationReading } from "@/lib/observatory/stations";
 import cycloneHistory from "@/lib/observatory/cyclone-history.json";
 import { CAT_COLOR_UI, type HistoricStorm } from "./cyclone-types";
 
@@ -69,6 +70,9 @@ export function Observatory() {
   const mode: MapMode = tab === "warnings" ? "warnings" : "layers";
   const [layer, setLayer] = useState<LayerId | "sat" | "cyc">("temp");
   const [histIdx, setHistIdx] = useState<number | null>(null);
+  const [base, setBase] = useState<"live" | "calm">("live");
+  const [overlays, setOverlays] = useState({ stations: true, symbols: true, forming: true });
+  const stations = useApi<{ stations: StationReading[] }>("/api/observatory/stations", { refreshMs: 10 * 60_000, enabled: tab === "layers" && overlays.stations });
   const [histProgress, setHistProgress] = useState(1);
   const [satProduct, setSatProduct] = useState<SatProduct>("natural");
   const [satFrame, setSatFrame] = useState(SAT_FRAMES - 1);
@@ -269,7 +273,10 @@ export function Observatory() {
             agreeLabel={(a, n) => t("observatory.models.agree", { a: f.number(a), n: f.number(n) })}
             myPos={myPos}
             tracks={dayTracks.map((track) => ({ track, startLabel: trackLabel(track) }))}
-            forming={(nowcast.data?.cells ?? []).map((cell) => ({
+            base={base}
+            stations={overlays.stations ? stations.data?.stations ?? null : null}
+            showSymbols={overlays.symbols}
+            forming={(overlays.forming ? nowcast.data?.cells ?? [] : []).map((cell) => ({
               cell,
               label: `${t("observatory.nc.label")} · ${t("observatory.nc.top", { c: f.number(cell.minTopC) })}`,
             }))}
@@ -362,7 +369,10 @@ export function Observatory() {
 
         {grid && tab === "layers" && (
           <>
-            <LayerSwitcher layer={layer} onChange={setLayer} />
+            <LayersPanel
+              layer={layer} onLayer={setLayer} base={base} onBase={setBase}
+              overlays={overlays} onOverlay={(k, v) => setOverlays((o) => ({ ...o, [k]: v }))}
+            >
             {layer === "cyc" && (
               <CyclonePanel
                 live={cycApi.data?.cyclones ?? null}
@@ -372,6 +382,7 @@ export function Observatory() {
                 onStop={() => setHistIdx(null)}
               />
             )}
+            </LayersPanel>
             {layer === "sat" && (
               <SatPanel
                 product={satProduct} onProduct={setSatProduct}
@@ -426,7 +437,7 @@ function CyclonePanel({ live, loading, histIdx, onReplay, onStop }: {
   const govName = (iso: string) => (isAr ? GOV_NAMES[iso]?.nameAr : GOV_NAMES[iso]?.name) ?? iso;
   const catOf = (c: ActiveCyclone) => c.track.reduce((best, s) => (s.cat === "HU" ? "HU" : best === "HU" ? best : s.cat === "TS" ? "TS" : best), "TD" as string);
   return (
-    <div className={cn(PANEL, "absolute start-3 top-[4.25rem] z-[1000] flex max-h-[calc(100%-6rem)] w-[22rem] max-w-[calc(100%-1.5rem)] flex-col sm:start-5 sm:top-[5.25rem]")}>
+    <div className={cn(PANEL, "pointer-events-auto flex max-h-[55vh] w-full flex-col")}>
       <div className="border-b border-border/50 p-3">
         <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Tornado className="h-4 w-4 text-danger" />{t("observatory.cyc.live")}</div>
         {loading && !live ? (
@@ -556,7 +567,7 @@ function RainTracksCard({ grid, tracks, townName, onPick }: {
   // A step covers 3 hours, so a cell last seen at step k rains until k + 3 h
   const endOf = (k: number) => f.date(new Date(Date.parse(grid.times[k]) + 3 * 3600_000), { hour: "numeric" });
   return (
-    <div className="absolute start-3 top-[4.25rem] z-[1000] w-80 max-w-[calc(100%-1.5rem)] sm:start-5 sm:top-[5.25rem]">
+    <div className="pointer-events-auto w-full">
     <button onClick={() => setOpen((o) => !o)} className={cn(PANEL, "flex h-9 items-center gap-1.5 px-3 text-xs font-medium sm:hidden")} aria-expanded={open}>
       <CloudRain className="h-4 w-4 text-info" />{t("observatory.tracks.title")}
     </button>
@@ -670,26 +681,74 @@ function MyPlace({ grid, step, pos, gov, todays, formatValue, onClose }: {
 
 const PANEL = "rounded-xl border border-border/60 bg-background/90 shadow-sm backdrop-blur-md";
 
-function LayerSwitcher({ layer, onChange }: { layer: LayerId | "sat" | "cyc"; onChange: (l: LayerId | "sat" | "cyc") => void }) {
+type AnyLayer = LayerId | "sat" | "cyc";
+const LAYER_ITEMS: { id: AnyLayer; icon: LucideIcon }[] = [...LAYERS, { id: "sat", icon: Satellite }, { id: "cyc", icon: Tornado }];
+
+/** NCM-style side panel: background, one weather layer, and what else to draw. Folds away on phones. */
+function LayersPanel({ layer, onLayer, base, onBase, overlays, onOverlay, children }: {
+  layer: AnyLayer; onLayer: (l: AnyLayer) => void; base: "live" | "calm"; onBase: (b: "live" | "calm") => void;
+  overlays: { stations: boolean; symbols: boolean; forming: boolean };
+  onOverlay: (k: "stations" | "symbols" | "forming", v: boolean) => void;
+  children?: React.ReactNode;
+}) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(true);
+  useEffect(() => { if (window.innerWidth < 640) setOpen(false); }, []);
+  const name = (id: AnyLayer) => (id === "sat" ? t("observatory.sat.layer") : id === "cyc" ? t("observatory.cyc.layer") : t(`observatory.layers.${id}`));
   return (
-    <div className={cn(PANEL, "absolute start-3 top-3 z-[1000] flex gap-1 p-1 sm:start-5 sm:top-5")} role="radiogroup" aria-label={t("observatory.tabs.map")}>
-      {[...LAYERS, { id: "sat" as const, icon: Satellite }, { id: "cyc" as const, icon: Tornado }].map(({ id, icon: Icon }) => (
-        <button
-          key={id}
-          role="radio"
-          aria-checked={layer === id}
-          onClick={() => onChange(id)}
-          className={cn(
-            "flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 sm:text-sm",
-            layer === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
-          )}
-        >
-          <Icon className="h-4 w-4" />
-          {/* Phones: only the chosen layer keeps its label */}
-          <span className={cn(layer !== id && "sr-only sm:not-sr-only")}>{id === "sat" ? t("observatory.sat.layer") : id === "cyc" ? t("observatory.cyc.layer") : t(`observatory.layers.${id}`)}</span>
+    <div className="pointer-events-none absolute start-3 top-3 z-[1000] flex max-h-[calc(100%-13rem)] w-72 max-w-[calc(100%-1.5rem)] flex-col gap-2 overflow-y-auto sm:start-5 sm:top-5">
+      <div className={cn(PANEL, "pointer-events-auto")}>
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-semibold">
+          <MapIcon className="h-4 w-4 text-primary" />
+          {t("observatory.panel.title")}
+          <span className="ms-auto flex items-center gap-1 text-xs font-normal text-muted-foreground">
+            {(() => { const Icon = LAYER_ITEMS.find((l) => l.id === layer)!.icon; return <Icon className="h-3.5 w-3.5" />; })()}
+            {name(layer)}
+          </span>
         </button>
-      ))}
+        {open && (
+          <div className="space-y-3 border-t border-border/50 px-3 pb-3 pt-2.5 text-xs">
+            <fieldset>
+              <legend className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("observatory.panel.base")}</legend>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["live", "calm"] as const).map((b) => (
+                  <button key={b} onClick={() => onBase(b)} aria-pressed={base === b}
+                    className={cn("rounded-lg border px-2 py-1.5 text-start leading-tight transition-colors",
+                      base === b ? "border-primary/60 bg-primary/10 font-semibold text-primary" : "border-border/60 text-muted-foreground hover:bg-accent")}>
+                    {t(b === "live" ? "observatory.panel.baseLive" : "observatory.panel.baseCalm")}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("observatory.panel.weather")}</legend>
+              <div className="space-y-0.5" role="radiogroup">
+                {LAYER_ITEMS.map(({ id, icon: Icon }) => (
+                  <button key={id} role="radio" aria-checked={layer === id} onClick={() => onLayer(id)}
+                    className={cn("flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-start transition-colors",
+                      layer === id ? "bg-primary text-primary-foreground" : "hover:bg-accent")}>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0">
+                      <span className="block font-medium">{name(id)}</span>
+                      <span className={cn("block truncate text-[10px]", layer === id ? "text-primary-foreground/80" : "text-muted-foreground")}>{t(`observatory.panel.desc.${id}`)}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("observatory.panel.overlays")}</legend>
+              {(["stations", "symbols", "forming"] as const).map((k) => (
+                <label key={k} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-accent">
+                  <input type="checkbox" checked={overlays[k]} onChange={(e) => onOverlay(k, e.target.checked)} className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" />
+                  {t(`observatory.panel.${k}`)}
+                </label>
+              ))}
+            </fieldset>
+          </div>
+        )}
+      </div>
+      {children}
     </div>
   );
 }

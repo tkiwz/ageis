@@ -212,6 +212,26 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    panel: {
+      title: "Layers",
+      base: "Background",
+      baseLive: "Live satellite on real terrain",
+      baseCalm: "Calm map",
+      weather: "Weather",
+      overlays: "On the map",
+      stations: "Stations (measured now)",
+      symbols: "Town forecasts",
+      forming: "Storms forming",
+      desc: {
+        temp: "Air temperature",
+        rain: "Rain, where it forms and goes",
+        wind: "Wind speed and flow",
+        cloud: "Cloud cover",
+        dust: "Dust and sandstorms",
+        sat: "Satellite pictures, last 3 h",
+        cyc: "Tropical cyclones",
+      },
+    },
     nc: {
       away: "{km} km from {town}",
       chip: "{n} storms forming now",
