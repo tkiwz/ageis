@@ -212,6 +212,10 @@ export const coreNs: CoreMessages = {
     showLess: "عرض أقل",
   },
   observatory: {
+    cycFc: {
+      gust: "هبّات {v} كم/س",
+      rain: "مطر {v} ملم",
+    },
     panel: {
       title: "الطبقات",
       base: "الخلفية",

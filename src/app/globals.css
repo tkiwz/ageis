@@ -194,3 +194,10 @@
 .obs-st-dot { width: 9px; height: 9px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.6); }
 .obs-st-w { display: inline-block; font-size: 11px; line-height: 1; }
 .obs-st-k { font-size: 10px; opacity: 0.8; }
+/* Forming clouds drawn from the satellite: soft edges, a gentle breathing glow */
+.obs-cloud { filter: drop-shadow(0 0 6px rgb(255 255 255 / 0.35)); }
+@media (prefers-reduced-motion: no-preference) { .obs-cloud { animation: obs-cloud 3s ease-in-out infinite; } }
+@keyframes obs-cloud { 50% { filter: drop-shadow(0 0 12px rgb(240 176 74 / 0.55)); } }
+.obs-genesis-l.strong { border-color: #d0533f; color: #fecaca; background: rgb(60 20 15 / 0.85); }
+.obs-rainblob { filter: drop-shadow(0 0 8px rgb(74 134 214 / 0.5)); }
+@media (prefers-reduced-motion: no-preference) { .obs-rainblob { animation: obs-cloud 3s ease-in-out infinite; } }

@@ -23,6 +23,7 @@ export const greyToC = (g: number) => 40 - (g / 255) * 120;
 const COLD_C = -10;          // top already colder than this
 const COOL_C = -8;           // and cooled at least this much in 30 min
 const MIN_PIXELS = 6;        // ≈ 180 km²
+const CLOUD_C = -5;          // edge of the cloud drawn around a forming core
 
 export interface FormingCell {
   lat: number; lon: number;
@@ -31,6 +32,8 @@ export interface FormingCell {
   /** cooling of the coldest tops, °C per 15 minutes (negative = cooling) */
   coolingPer15: number;
   strong: boolean;
+  /** The real cloud: cloud-top °C per pixel over its bounding box (null = clear), and which pixels are the cooling core */
+  shape: { lat0: number; lon0: number; lat1: number; lon1: number; w: number; h: number; temps: (number | null)[]; core: string };
 }
 export interface Nowcast { time: string; previous: string; cells: FormingCell[] }
 
@@ -67,6 +70,30 @@ export function findForming(now: Uint8Array, before: Uint8Array): FormingCell[] 
       }
     }
     if (px.length < MIN_PIXELS) continue;
+    // Grow from the cooling core to the whole cold cloud it belongs to — that's the shape people see
+    const inCloud = new Set(px), queue = [...px];
+    while (queue.length && inCloud.size < 4000) {
+      const k = queue.pop()!;
+      const x = k % W, y = (k / W) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy, m = yy * W + xx;
+        if (xx >= 0 && yy >= 0 && xx < W && yy < H && !inCloud.has(m) && greyToC(now[m]) <= CLOUD_C) { inCloud.add(m); queue.push(m); }
+      }
+    }
+    let bx0 = W, by0 = H, bx1 = 0, by1 = 0;
+    for (const k of inCloud) { const x = k % W, y = (k / W) | 0; bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); by0 = Math.min(by0, y); by1 = Math.max(by1, y); }
+    const sw = bx1 - bx0 + 1, sh = by1 - by0 + 1, coreSet = new Set(px);
+    const temps: (number | null)[] = [];
+    let core = "";
+    for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) {
+      const k = y * W + x;
+      temps.push(inCloud.has(k) ? Math.round(greyToC(now[k])) : null);
+      core += coreSet.has(k) ? "1" : "0";
+    }
+    const shape = {
+      lat0: BOX.lat1 - (by1 + 1) * dLat, lat1: BOX.lat1 - by0 * dLat,
+      lon0: BOX.lon0 + bx0 * dLon, lon1: BOX.lon0 + (bx1 + 1) * dLon, w: sw, h: sh, temps, core,
+    };
     let sx = 0, sy = 0, minC = 99, cool = 0;
     for (const k of px) {
       sx += k % W; sy += (k / W) | 0;
@@ -81,6 +108,7 @@ export function findForming(now: Uint8Array, before: Uint8Array): FormingCell[] 
       lat: Math.round(lat * 100) / 100, lon: Math.round(lon * 100) / 100,
       areaKm2: Math.round(px.length * kmPx), minTopC: Math.round(minC), coolingPer15: Math.round(per15),
       strong: minC <= -40 && per15 <= -8,
+      shape,
     });
   }
   return cells.sort((a, b) => a.coolingPer15 - b.coolingPer15);
@@ -94,4 +122,4 @@ async function compute(): Promise<Nowcast> {
   return { time, previous, cells: findForming(a, b) };
 }
 
-export const getNowcast = unstable_cache(compute, ["observatory-nowcast-v1"], { revalidate: 600 });
+export const getNowcast = unstable_cache(compute, ["observatory-nowcast-v2"], { revalidate: 600 });

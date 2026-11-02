@@ -212,6 +212,10 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    cycFc: {
+      gust: "gusts {v} km/h",
+      rain: "rain {v} mm",
+    },
     panel: {
       title: "Layers",
       base: "Background",

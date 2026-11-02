@@ -71,6 +71,15 @@ export function Observatory() {
   const [layer, setLayer] = useState<LayerId | "sat" | "cyc">("temp");
   const [histIdx, setHistIdx] = useState<number | null>(null);
   const [base, setBase] = useState<"live" | "calm">("live");
+  // Outside Oman's grid the map asks for a forecast of the region in view
+  const [viewBox, setViewBox] = useState<{ lat0: number; lon0: number; lat1: number; lon1: number } | null>(null);
+  const outsideOman = !!viewBox && (viewBox.lat0 < 15.5 || viewBox.lat1 > 27.5 || viewBox.lon0 < 50.5 || viewBox.lon1 > 61);
+  // Snap to 10° tiles so panning reuses the same cached region (the forecast service is rate-limited)
+  const lo = (v: number) => Math.floor(v / 10) * 10, hi = (v: number) => Math.ceil(v / 10) * 10;
+  const viewApi = useApi<ForecastGrid>(
+    viewBox ? `/api/observatory/view?bbox=${lo(viewBox.lat0)},${lo(viewBox.lon0)},${hi(viewBox.lat1)},${hi(viewBox.lon1)}` : "/api/observatory/view?bbox=0,0,0,0",
+    { enabled: tab === "layers" && outsideOman, refreshMs: 30 * 60_000 },
+  );
   const [overlays, setOverlays] = useState({ stations: true, symbols: true, forming: true });
   const stations = useApi<{ stations: StationReading[] }>("/api/observatory/stations", { refreshMs: 10 * 60_000, enabled: tab === "layers" && overlays.stations });
   const [histProgress, setHistProgress] = useState(1);
@@ -93,6 +102,19 @@ export function Observatory() {
   }, [histIdx, histProgress]);
   const nowcast = useApi<Nowcast>("/api/observatory/nowcast", { refreshMs: 10 * 60_000, enabled: tab === "layers" });
   const [ncOpen, setNcOpen] = useState(false);
+  /** Forecast along a cyclone's path: what the models expect where the centre will be at that time */
+  function cycPointLabel(iso: string, lat: number, lon: number) {
+    const when = f.date(iso, { weekday: "short", hour: "numeric" });
+    const g = (outsideOman ? viewApi.data : null) ?? forecast.data;
+    if (!g) return when;
+    const at = g.times.reduce((best, ti, k) => (Math.abs(Date.parse(ti) - Date.parse(iso)) < Math.abs(Date.parse(g.times[best]) - Date.parse(iso)) ? k : best), 0);
+    if (Math.abs(Date.parse(g.times[at]) - Date.parse(iso)) > 6 * 3600_000) return when;
+    const { lat0, lon0, step, nx, ny } = g.grid;
+    const i = Math.round((lon - lon0) / step), j = Math.round((lat - lat0) / step);
+    if (i < 0 || j < 0 || i >= nx || j >= ny) return when;
+    const n = at * nx * ny + j * nx + i;
+    return `${when} · ${t("observatory.cycFc.gust", { v: f.number(Math.round(g.gust[n])) })} · ${t("observatory.cycFc.rain", { v: f.number(Math.round(g.rain[n] * 10) / 10) })}`;
+  }
   const cycApi = useApi<{ cyclones: ActiveCyclone[]; source: string }>("/api/observatory/cyclones", { refreshMs: 15 * 60_000, enabled: layer === "cyc" });
 
   useEffect(() => {
@@ -274,19 +296,21 @@ export function Observatory() {
             myPos={myPos}
             tracks={dayTracks.map((track) => ({ track, startLabel: trackLabel(track) }))}
             base={base}
+            viewGrid={outsideOman && layer !== "sat" ? viewApi.data : null}
+            onView={setViewBox}
             stations={overlays.stations ? stations.data?.stations ?? null : null}
             showSymbols={overlays.symbols}
             forming={(overlays.forming ? nowcast.data?.cells ?? [] : []).map((cell) => ({
               cell,
               label: `${t("observatory.nc.label")} · ${t("observatory.nc.top", { c: f.number(cell.minTopC) })}`,
             }))}
-            layer={layer === "sat" || layer === "cyc" ? "temp" : layer}
+            layer={layer === "sat" ? "temp" : layer === "cyc" ? "wind" : layer}
             satellite={tab === "layers" && layer === "sat" && satTimes.length ? { wms: SAT_WMS[satProduct], times: satTimes, frame: satFrame } : null}
             cyclones={tab === "layers" && layer === "cyc" ? {
               live: cycApi.data?.cyclones ?? [],
               history: histIdx !== null ? HISTORY[histIdx] : null,
               progress: histProgress,
-              timeLabel: (iso: string) => f.date(iso, { weekday: "short", hour: "numeric" }),
+              timeLabel: (iso: string, lat: number, lon: number) => cycPointLabel(iso, lat, lon),
             } : null}
           />
         ) : (
@@ -398,8 +422,8 @@ export function Observatory() {
                 onPick={(tr) => { setPlaying(false); setStep(tr.steps[0].t); }}
               />
             )}
-            {layer !== "sat" && layer !== "cyc" && <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
-              <Legend layer={layer} dark={dark} note={layer === "rain" && grid.rainModels.length > 1 ? t("observatory.models.blend", { n: f.number(grid.rainModels.length) }) : undefined} />
+            {layer !== "sat" && <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col items-start gap-2 sm:inset-x-5 sm:bottom-5">
+              <Legend layer={layer === "cyc" ? "wind" : layer} dark={dark} note={layer === "rain" && grid.rainModels.length > 1 ? t("observatory.models.blend", { n: f.number(grid.rainModels.length) }) : undefined} />
               <TimeBar
                 times={grid.times} days={days} step={cur} nowStep={nowStep} playing={playing}
                 onStep={(s) => { setPlaying(false); setStep(s); }}

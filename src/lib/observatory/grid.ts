@@ -16,7 +16,7 @@ const REVALIDATE_S = 3 * 3600;
 
 export interface ForecastGrid {
   generatedAt: string;
-  grid: typeof GRID & { nx: number; ny: number };
+  grid: { lat0: number; lat1: number; lon0: number; lon1: number; step: number; nx: number; ny: number };
   /** UTC ISO times, one per 3-hour step */
   times: string[];
   /** Flat arrays indexed [t * ny * nx + j * nx + i], j = latitude row from lat0, i = longitude column from lon0 */
@@ -108,8 +108,8 @@ async function fetchDust(pts: { lat: number; lon: number }[], times: string[]): 
   return out;
 }
 
-async function fetchGrid(): Promise<ForecastGrid> {
-  const pts = gridPoints();
+/** Main variables at the given points (best-match model), 3-hour steps, 7 days. */
+async function fetchBase(pts: { lat: number; lon: number }[]) {
   const url =
     "https://api.open-meteo.com/v1/forecast" +
     `?latitude=${pts.map((p) => p.lat).join(",")}&longitude=${pts.map((p) => p.lon).join(",")}` +
@@ -117,10 +117,11 @@ async function fetchGrid(): Promise<ForecastGrid> {
     "&forecast_days=7&temporal_resolution=hourly_3&timezone=GMT";
   const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(45_000) });
   if (!r.ok) throw new Error(`open-meteo ${r.status}`);
-  const body = (await r.json()) as PointResponse[];
-  if (!Array.isArray(body) || body.length !== pts.length) throw new Error("open-meteo: unexpected grid size");
+  const body = (await r.json()) as PointResponse[] | PointResponse;
+  const list = Array.isArray(body) ? body : [body];
+  if (list.length !== pts.length) throw new Error("open-meteo: unexpected grid size");
 
-  const times = body[0].hourly.time.map((t) => `${t}:00Z`);
+  const times = list[0].hourly.time.map((t) => `${t}:00Z`);
   const T = times.length, N = pts.length;
   const out = {
     temp: new Array<number>(T * N), rain: new Array<number>(T * N), wind: new Array<number>(T * N),
@@ -128,7 +129,7 @@ async function fetchGrid(): Promise<ForecastGrid> {
   };
   const r1 = (v: number | null) => Math.round((v ?? 0) * 10) / 10;
   const r0 = (v: number | null) => Math.round(v ?? 0);
-  body.forEach((p, n) => {
+  list.forEach((p, n) => {
     const h = p.hourly;
     for (let t = 0; t < T; t++) {
       const k = t * N + n;
@@ -141,6 +142,12 @@ async function fetchGrid(): Promise<ForecastGrid> {
       out.code[k] = r0(h.weather_code[t]);
     }
   });
+  return { times, out };
+}
+
+async function fetchGrid(): Promise<ForecastGrid> {
+  const pts = gridPoints();
+  const { times, out } = await fetchBase(pts);
   const [dust, models] = await Promise.all([fetchDust(pts, times), fetchModelRain(pts, times)]);
   // Rain = blend of the global models where they have data, else the single best-match model
   const rain = models ? out.rain.map((v, k) => (models.mean[k] >= 0 ? models.mean[k] : v)) : out.rain;
@@ -150,5 +157,35 @@ async function fetchGrid(): Promise<ForecastGrid> {
     rainAgree, rainModels: models?.models ?? [{ id: "best_match", weight: 1 }],
   };
 }
+
+/**
+ * A coarser grid for any part of the world the viewer is looking at (outside Oman).
+ * The box is snapped to its step so nearby views share one cached grid; at most ~360 points.
+ */
+export const VIEW_MAX_POINTS = 360;
+export function snapView(lat0: number, lon0: number, lat1: number, lon1: number) {
+  const steps = [0.5, 1, 2, 3, 5, 8, 12];
+  let step = steps[steps.length - 1];
+  for (const s of steps) if (((lat1 - lat0) / s + 1) * ((lon1 - lon0) / s + 1) <= VIEW_MAX_POINTS) { step = s; break; }
+  const snap = (v: number, f: (x: number) => number) => f(v / step) * step;
+  return {
+    lat0: Math.max(-80, snap(lat0, Math.floor)), lat1: Math.min(80, snap(lat1, Math.ceil)),
+    lon0: Math.max(-180, snap(lon0, Math.floor)), lon1: Math.min(180, snap(lon1, Math.ceil)), step,
+  };
+}
+
+async function fetchView(lat0: number, lon0: number, lat1: number, lon1: number, step: number): Promise<ForecastGrid> {
+  const nx = Math.round((lon1 - lon0) / step) + 1, ny = Math.round((lat1 - lat0) / step) + 1;
+  const pts: { lat: number; lon: number }[] = [];
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) pts.push({ lat: lat0 + j * step, lon: lon0 + i * step });
+  const { times, out } = await fetchBase(pts);
+  const dust = await fetchDust(pts, times);
+  return {
+    generatedAt: new Date().toISOString(), grid: { lat0, lat1, lon0, lon1, step, nx, ny } as ForecastGrid["grid"], times, ...out, dust,
+    rainAgree: out.rain.map((v) => (v >= AGREE_MM ? 1 : 0)), rainModels: [{ id: "best_match", weight: 1 }],
+  };
+}
+
+export const getViewGrid = unstable_cache(fetchView, ["observatory-view-grid-v1"], { revalidate: REVALIDATE_S });
 
 export const getForecastGrid = unstable_cache(fetchGrid, ["observatory-grid-v3"], { revalidate: REVALIDATE_S });

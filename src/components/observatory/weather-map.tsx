@@ -40,6 +40,68 @@ const SYMBOL_SVG: Record<Symbol, string> = Object.fromEntries(
   ] as const).map(([k, Icon, color]) => [k, renderToStaticMarkup(<Icon size={18} color={color} strokeWidth={2} />)]),
 ) as Record<Symbol, string>;
 
+/** A rain cell drawn from its grid points (mm per point), upscaled and blurred into a natural shape. */
+function rainBlob(g: ForecastGrid, cells: number[], mm: number[]) {
+  if (!cells?.length) return null;
+  const { nx, lat0, lon0, step } = g.grid;
+  const xs = cells.map((k) => k % nx), ys = cells.map((k) => Math.floor(k / nx));
+  const x0 = Math.min(...xs) - 1, x1 = Math.max(...xs) + 1, y0 = Math.min(...ys) - 1, y1 = Math.max(...ys) + 1;
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  const small = document.createElement("canvas");
+  small.width = w; small.height = h;
+  const ctx = small.getContext("2d");
+  if (!ctx) return null;
+  const img = ctx.createImageData(w, h);
+  cells.forEach((k, n) => {
+    const x = (k % nx) - x0, y = h - 1 - (Math.floor(k / nx) - y0); // canvas rows run north → south
+    const heavy = Math.min(1, mm[n] / 8);
+    img.data.set([Math.round(90 - heavy * 40), Math.round(160 - heavy * 70), 235, Math.round((0.55 + heavy * 0.4) * 255)], (y * w + x) * 4);
+  });
+  ctx.putImageData(img, 0, 0);
+  const scale = 24, big = document.createElement("canvas");
+  big.width = w * scale; big.height = h * scale;
+  const bctx = big.getContext("2d");
+  if (!bctx) return null;
+  bctx.imageSmoothingEnabled = true;
+  bctx.filter = `blur(${scale * 0.45}px)`;
+  bctx.drawImage(small, 0, 0, big.width, big.height);
+  const half = step / 2;
+  return {
+    url: big.toDataURL("image/png"),
+    bounds: L.latLngBounds([lat0 + y0 * step - half, lon0 + x0 * step - half], [lat0 + y1 * step + half, lon0 + x1 * step + half]),
+  };
+}
+
+/** Paints a forming cloud from its per-pixel top temperatures, upscaled and softened so it reads like a real cloud. */
+function cloudImage(sh: { w: number; h: number; temps: (number | null)[]; core: string }, strong: boolean): string | null {
+  const small = document.createElement("canvas");
+  small.width = sh.w; small.height = sh.h;
+  const ctx = small.getContext("2d");
+  if (!ctx) return null;
+  const img = ctx.createImageData(sh.w, sh.h);
+  sh.temps.forEach((c, k) => {
+    if (c === null) return;
+    const cold = Math.min(1, Math.max(0, (-c - 5) / 60)); // −5 °C … −65 °C
+    const v = Math.round(200 + cold * 55);
+    let [r, g, b] = [v, v, Math.min(255, v + 6)];
+    if (sh.core[k] === "1") { // the core that is rising: amber, red when strong
+      const [cr, cg, cb] = strong ? [232, 96, 70] : [240, 176, 74];
+      r = Math.round(r * 0.35 + cr * 0.65); g = Math.round(g * 0.35 + cg * 0.65); b = Math.round(b * 0.35 + cb * 0.65);
+    }
+    img.data.set([r, g, b, Math.round((0.45 + cold * 0.5) * 255)], k * 4);
+  });
+  ctx.putImageData(img, 0, 0);
+  const scale = 8, big = document.createElement("canvas");
+  big.width = sh.w * scale; big.height = sh.h * scale;
+  const bctx = big.getContext("2d");
+  if (!bctx) return null;
+  bctx.imageSmoothingEnabled = true;
+  bctx.imageSmoothingQuality = "high";
+  bctx.filter = `blur(${scale * 0.6}px)`;
+  bctx.drawImage(small, 0, 0, big.width, big.height);
+  return big.toDataURL("image/png");
+}
+
 /** A storm symbol (two curved arms) that turns slowly, like a cyclone. */
 const CYCLONE_SVG = `<svg class="obs-cyc" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="4" fill="#c8463d"/><path d="M17 5a12 12 0 0 1 11 7M17 29a12 12 0 0 1-11-7" stroke="#c8463d" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M28 12c-3-2-6-2-8 0M6 22c3 2 6 2 8 0" stroke="#c8463d" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
 
@@ -93,6 +155,10 @@ interface Props {
   tracks?: { track: RainTrack; startLabel: string }[];
   /** Live satellite instead of the forecast: WMS layer name, frame times, the one shown */
   satellite?: { wms: string; times: string[]; frame: number } | null;
+  /** Forecast for the part of the world in view, when it's outside Oman (same times as `grid`) */
+  viewGrid?: ForecastGrid | null;
+  /** Called (debounced) with the visible box after the map moves */
+  onView?: (box: { lat0: number; lon0: number; lat1: number; lon1: number }) => void;
   /** Base map: real terrain under the live Meteosat picture, or the calm grey map */
   base?: "live" | "calm";
   /** Measured readings at airport stations */
@@ -106,17 +172,27 @@ interface Props {
     live: ActiveCyclone[];
     history: { track: [number, number, string][] } | null;
     progress: number;
-    timeLabel: (iso: string) => string;
+    timeLabel: (iso: string, lat: number, lon: number) => string;
   } | null;
 }
 
 export const CAT_COLOR: Record<string, string> = { TD: "#7fb0dc", TS: "#e3c14f", HU: "#c8463d", CY: "#c8463d", SCS: "#e08a3c" };
 const REGION_BOUNDS = L.latLngBounds([-8, 35], [33, 95]);
+const WORLD = L.latLngBounds([-85, -200], [85, 200]);
 
 
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming, base = "live", stations, showSymbols = true } = props;
-  const showForecast = mode === "layers" && !satellite && !cyclones;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming, base = "live", stations, showSymbols = true, viewGrid, onView } = props;
+  // Raster/readout/particles use the world grid when one is in view; warnings, symbols and rain paths stay on Oman's
+  const rgrid = viewGrid ?? grid;
+  const isView = !!viewGrid;
+  const rstep = useMemo(() => {
+    if (!viewGrid) return step;
+    const k = viewGrid.times.indexOf(grid.times[step]);
+    return k >= 0 ? k : Math.min(step, viewGrid.times.length - 1);
+  }, [viewGrid, grid, step]);
+  // Cyclone view keeps the forecast underneath (wind by default), so the storm reads against it
+  const showForecast = mode === "layers" && !satellite;
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const tiles = useRef<{ base: L.TileLayer; labels: L.TileLayer; hill?: L.TileLayer } | null>(null);
@@ -132,20 +208,21 @@ export function WeatherMap(props: Props) {
   const formLayer = useRef<L.LayerGroup | null>(null);
   const stationLayer = useRef<L.LayerGroup | null>(null);
   const liveIr = useRef<L.TileLayer.WMS | null>(null);
+  const globalIr = useRef<L.TileLayer[]>([]);
   const readout = useRef<HTMLDivElement>(null);
   const [zoomTick, setZoomTick] = useState(0);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
-  const frame = useMemo<Frame>(() => frameOf(grid, layer, step), [grid, layer, step]);
-  const live = useRef({ frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite, step, agreeLabel: props.agreeLabel });
-  live.current = { frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite, step, agreeLabel: props.agreeLabel };
+  const frame = useMemo<Frame>(() => frameOf(rgrid, layer, rstep), [rgrid, layer, rstep]);
+  const live = useRef({ frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite, step: rstep, agreeLabel: props.agreeLabel, rgrid, isView, onView });
+  live.current = { frame, layer, mode, levels, selectedIso, onSelectIso, formatValue, levelLabel, isAr, sat: !!satellite, step: rstep, agreeLabel: props.agreeLabel, rgrid, isView, onView };
 
   // ── Create the map once ───────────────────────────────────
   useEffect(() => {
     if (!box.current || map.current) return;
     const m = L.map(box.current, {
-      zoomControl: false, attributionControl: true, minZoom: 5, maxZoom: 10,
-      // maxBounds leaves room to slide Oman beside the warnings panel
-      maxBounds: OMAN_BOUNDS.pad(1.5), worldCopyJump: false, zoomSnap: 0.25,
+      zoomControl: false, attributionControl: true, minZoom: 2, maxZoom: 10,
+      // The whole world is open; the view starts on Oman
+      maxBounds: WORLD, maxBoundsViscosity: 0.8, worldCopyJump: false, zoomSnap: 0.25,
     });
     m.fitBounds(OMAN_BOUNDS, fitPadding("layers", isAr));
     zoom.current = L.control.zoom({ position: "bottomright" }).addTo(m);
@@ -183,15 +260,17 @@ export function WeatherMap(props: Props) {
       if (live.current.sat) { el.style.opacity = "0"; return; } // satellite pictures have no values to read out
       if (md === "layers") {
         if (ly === "wind") {
-          const u = sample(grid, fr.u, e.latlng.lat, e.latlng.lng), v = sample(grid, fr.v, e.latlng.lat, e.latlng.lng);
+          const g = live.current.rgrid;
+          const u = sample(g, fr.u, e.latlng.lat, e.latlng.lng), v = sample(g, fr.v, e.latlng.lat, e.latlng.lng);
           if (u !== null && v !== null) text = fmt("wind", Math.hypot(u, v), (Math.atan2(-u, -v) * 180) / Math.PI + 360);
         } else {
-          const v = sample(grid, fr.values, e.latlng.lat, e.latlng.lng);
+          const v = sample(live.current.rgrid, fr.values, e.latlng.lat, e.latlng.lng);
           if (v !== null && !(ly === "dust" && v < 0)) text = fmt(ly, v); // dust < 0: beyond the 5-day air-quality forecast
-          if (text && ly === "rain" && grid.rainModels.length > 1) {
-            const { lat0, lon0, step: st, nx, ny } = grid.grid;
+          const rg = live.current.rgrid;
+          if (text && ly === "rain" && rg.rainModels.length > 1) {
+            const { lat0, lon0, step: st, nx, ny } = rg.grid;
             const i = Math.round((e.latlng.lng - lon0) / st), j = Math.round((e.latlng.lat - lat0) / st);
-            if (i >= 0 && j >= 0 && i < nx && j < ny) text += ` · ${live.current.agreeLabel(grid.rainAgree[live.current.step * nx * ny + j * nx + i], grid.rainModels.length)}`;
+            if (i >= 0 && j >= 0 && i < nx && j < ny) text += ` · ${live.current.agreeLabel(rg.rainAgree[live.current.step * nx * ny + j * nx + i], rg.rainModels.length)}`;
           }
         }
       } else {
@@ -204,12 +283,20 @@ export function WeatherMap(props: Props) {
       el.style.transform = `translate(${e.containerPoint.x + 14}px, ${e.containerPoint.y - 34}px)`;
     });
     m.on("mouseout", () => { if (readout.current) readout.current.style.opacity = "0"; });
+    let viewTimer = 0;
+    m.on("moveend", () => {
+      window.clearTimeout(viewTimer);
+      viewTimer = window.setTimeout(() => {
+        const b = m.getBounds();
+        live.current.onView?.({ lat0: b.getSouth(), lon0: b.getWest(), lat1: b.getNorth(), lon1: b.getEast() });
+      }, 1200);
+    });
 
     const onLand = landMask(grid, LAND);
     particles.current = new WindParticles(m, (lat, lon) => {
-      if (!onLand(lon, lat)) return null;
-      const fr = live.current.frame;
-      const u = sample(grid, fr.u, lat, lon), v = sample(grid, fr.v, lat, lon);
+      if (!live.current.isView && !onLand(lon, lat)) return null;
+      const fr = live.current.frame, g = live.current.rgrid;
+      const u = sample(g, fr.u, lat, lon), v = sample(g, fr.v, lat, lon);
       return u === null || v === null ? null : [u, v];
     });
     map.current = m;
@@ -231,6 +318,8 @@ export function WeatherMap(props: Props) {
     tiles.current?.hill?.remove();
     liveIr.current?.remove();
     liveIr.current = null;
+    globalIr.current.forEach((l) => l.remove());
+    globalIr.current = [];
     const attribution = "© OpenStreetMap · Esri"; // map-tile licences; all other sources are listed in the README
     if (base === "live") {
       tiles.current = {
@@ -238,7 +327,15 @@ export function WeatherMap(props: Props) {
         hill: L.tileLayer(ESRI_HILLSHADE, { maxZoom: 16, className: "obs-hillshade" }).addTo(m),
         labels: L.tileLayer(ESRI_PLACES, { maxZoom: 16, pane: "labels" }).addTo(m),
       };
-      // Latest Meteosat infrared, blended so clouds glow white over the real ground
+      // Whole world, live: GOES-West/East and Himawari (enhanced IR) under Meteosat 0° and Indian Ocean,
+      // which glow white over the real ground. Together they cover every longitude.
+      globalIr.current = ["GOES-West_ABI_Band13_Clean_Infrared", "GOES-East_ABI_Band13_Clean_Infrared", "Himawari_AHI_Band13_Clean_Infrared"].map((id) =>
+        L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${id}/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`, {
+          maxNativeZoom: 6, maxZoom: 12, opacity: 0.55, className: "obs-live-ir-colour",
+        }).addTo(m));
+      globalIr.current.push(L.tileLayer.wms(EUMETSAT_WMS, {
+        layers: "msg_fes:ir108", format: "image/png", transparent: true, version: "1.3.0", className: "obs-live-ir", maxZoom: 12,
+      }).addTo(m));
       liveIr.current = L.tileLayer.wms(EUMETSAT_WMS, {
         layers: "msg_iodc:ir108", format: "image/png", transparent: true, version: "1.3.0", className: "obs-live-ir", maxZoom: 12,
       }).addTo(m);
@@ -261,7 +358,11 @@ export function WeatherMap(props: Props) {
   }, [base]);
 
   // Hide the live picture while a full satellite product or the cyclone view is on
-  useEffect(() => { liveIr.current?.setOpacity(satellite || cyclones ? 0 : 0.9); }, [satellite, cyclones, base]);
+  useEffect(() => {
+    const off = !!(satellite || cyclones);
+    liveIr.current?.setOpacity(off ? 0 : 0.9);
+    globalIr.current.forEach((l) => l.setOpacity(off ? 0 : l instanceof L.TileLayer.WMS ? 0.9 : 0.55));
+  }, [satellite, cyclones, base]);
 
   // ── Measured station readings (NCM-style dots with numbers) ──
   useEffect(() => {
@@ -283,12 +384,12 @@ export function WeatherMap(props: Props) {
     const m = map.current;
     if (!m || !canvas) return;
     if (!showForecast) { overlay.current?.remove(); overlay.current = null; return; }
-    renderFrame(canvas, grid, layer, frame, LAND, dark);
+    renderFrame(canvas, rgrid, layer, frame, isView ? null : LAND, dark);
     const url = canvas.toDataURL("image/png");
-    const bounds = L.latLngBounds([grid.grid.lat0, grid.grid.lon0], [grid.grid.lat1, grid.grid.lon1]);
-    if (overlay.current) overlay.current.setUrl(url);
+    const bounds = L.latLngBounds([rgrid.grid.lat0, rgrid.grid.lon0], [rgrid.grid.lat1, rgrid.grid.lon1]);
+    if (overlay.current) { overlay.current.setUrl(url); overlay.current.setBounds(bounds); }
     else overlay.current = L.imageOverlay(url, bounds, { opacity: 1, interactive: false, className: "obs-raster" }).addTo(m);
-  }, [canvas, grid, layer, frame, showForecast, dark]);
+  }, [canvas, rgrid, isView, layer, frame, showForecast, dark]);
 
   // ── Town weather symbols (layers mode) ─────────────────────
   useEffect(() => {
@@ -339,13 +440,15 @@ export function WeatherMap(props: Props) {
             html: `<svg width="18" height="18" viewBox="0 0 18 18" style="transform:rotate(${track.bearing}deg)"><path d="M9 1 L15 15 L9 11 L3 15 Z" fill="${colour}"/></svg>` }),
         }).addTo(grp);
       }
-      // Where it starts to form
+      // Where it starts to form: the rain area itself at its first step, soft-edged, plus a label
       if (!track.existing) {
         const s0 = track.steps[0];
+        const blob = rainBlob(grid, s0.cells, s0.mm);
+        if (blob) L.imageOverlay(blob.url, blob.bounds, { pane: "tracks", interactive: false, className: "obs-rainblob" }).addTo(grp);
         L.marker([s0.lat, s0.lon], {
           pane: "tracks", interactive: false,
-          icon: L.divIcon({ className: "obs-genesis-wrap", iconSize: [120, 44], iconAnchor: [60, 12],
-            html: `<div class="obs-genesis"></div><div class="obs-genesis-l">${startLabel}</div>` }),
+          icon: L.divIcon({ className: "obs-genesis-wrap", iconSize: [140, 22], iconAnchor: [70, -8],
+            html: `<div class="obs-genesis-l">${startLabel}</div>` }),
         }).addTo(grp);
       }
     }
@@ -384,13 +487,10 @@ export function WeatherMap(props: Props) {
     const m = map.current;
     if (!m) return;
     if (cycOn) {
-      m.setMinZoom(3.5);
-      m.setMaxBounds(REGION_BOUNDS.pad(0.3));
+      void REGION_BOUNDS;
       m.flyToBounds(L.latLngBounds([8, 48], [27, 72]), { duration: 0.7 });
     } else {
-      m.setMinZoom(5);
-      m.setMaxBounds(OMAN_BOUNDS.pad(1.5));
-      if (m.getZoom() < 5) m.fitBounds(OMAN_BOUNDS, fitPadding(mode, isAr));
+      // keep whatever the viewer was looking at
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cycOn]);
@@ -410,7 +510,7 @@ export function WeatherMap(props: Props) {
       c.points.forEach((p, k) => {
         L.circleMarker([p.lat, p.lon], { radius: 4, color: "#ffffff", weight: 1.2, fillColor: p.forecast ? "transparent" : "#94a3b8", fillOpacity: p.forecast ? 0 : 1, interactive: false }).addTo(grp);
         if (p.forecast && k % 2 === 0) {
-          L.marker([p.lat, p.lon], { interactive: false, icon: L.divIcon({ className: "", iconSize: [90, 16], iconAnchor: [-6, 8], html: `<span class="obs-cyc-t">${cyclones.timeLabel(p.time)}</span>` }) }).addTo(grp);
+          L.marker([p.lat, p.lon], { interactive: false, icon: L.divIcon({ className: "", iconSize: [200, 16], iconAnchor: [-6, 8], html: `<span class="obs-cyc-t">${cyclones.timeLabel(p.time, p.lat, p.lon)}</span>` }) }).addTo(grp);
         }
       });
       const nowPt = [...c.points].reverse().find((p) => !p.forecast) ?? c.points[0];
@@ -439,10 +539,16 @@ export function WeatherMap(props: Props) {
     grp.clearLayers();
     if (mode !== "layers" || cyclones || !forming) return;
     for (const { cell, label } of forming) {
+      // The cloud as the satellite sees it: whiter where the top is colder, warm glow on the core that is shooting up
+      const sh = cell.shape;
+      if (sh?.w && sh.h) {
+        const url = cloudImage(sh, cell.strong);
+        if (url) L.imageOverlay(url, [[sh.lat0, sh.lon0], [sh.lat1, sh.lon1]], { pane: "tracks", interactive: false, className: "obs-cloud" }).addTo(grp);
+      }
       L.marker([cell.lat, cell.lon], {
         pane: "tracks", interactive: false,
-        icon: L.divIcon({ className: "obs-genesis-wrap", iconSize: [140, 46], iconAnchor: [70, 13],
-          html: `<div class="obs-forming${cell.strong ? " strong" : ""}"></div><div class="obs-genesis-l">${label}</div>` }),
+        icon: L.divIcon({ className: "obs-genesis-wrap", iconSize: [150, 22], iconAnchor: [75, -6],
+          html: `<div class="obs-genesis-l${cell.strong ? " strong" : ""}">${label}</div>` }),
       }).addTo(grp);
     }
   }, [forming, mode, cyclones]);

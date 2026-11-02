@@ -11,7 +11,7 @@ import type { ForecastGrid } from "@/lib/observatory/grid";
 export const RAIN_MM = 0.5;   // mm in 3 h that counts as raining
 const LINK_DEG = 1.0;         // max centre jump between steps without overlap (~110 km)
 
-export interface CellStep { t: number; lat: number; lon: number; maxMm: number; totalMm: number; points: number; /** most models agreeing at any point of the cell */ agree: number }
+export interface CellStep { t: number; lat: number; lon: number; maxMm: number; totalMm: number; points: number; /** most models agreeing at any point of the cell */ agree: number; /** grid indices of the cell, for drawing its real shape */ cells: number[]; /** rain mm per cell point */ mm: number[] }
 export interface RainTrack {
   id: number;
   steps: CellStep[];
@@ -80,7 +80,7 @@ export function rainTracks(g: ForecastGrid): RainTrack[] {
         const score = overlap > 0 ? 10 + overlap : d <= LINK_DEG ? 1 - d / LINK_DEG : 0;
         if (score > bestScore) { bestScore = score; best = tr; }
       }
-      const cs: CellStep = { t, lat: c.lat, lon: c.lon, maxMm: c.maxMm, totalMm: c.totalMm, points: c.pts.length, agree: c.agree };
+      const cs: CellStep = { t, lat: c.lat, lon: c.lon, maxMm: c.maxMm, totalMm: c.totalMm, points: c.pts.length, agree: c.agree, cells: c.pts, mm: c.pts.map((k) => g.rain[t * g.grid.nx * g.grid.ny + k]) };
       if (best) {
         claimed.add(best.id);
         best.steps.push(cs);

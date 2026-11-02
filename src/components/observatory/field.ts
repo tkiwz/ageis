@@ -108,7 +108,7 @@ type Ring = number[][];
 export type Polygons = Ring[][]; // list of polygons, each [outer, ...holes]
 
 /** Draws a frame into `canvas`, clipped to Oman's land so the sea stays calm and readable. */
-export function renderFrame(canvas: HTMLCanvasElement, g: ForecastGrid, layer: LayerId, frame: Frame, land: Polygons, dark: boolean) {
+export function renderFrame(canvas: HTMLCanvasElement, g: ForecastGrid, layer: LayerId, frame: Frame, land: Polygons | null, dark: boolean) {
   const geo = canvasGeometry(g);
   canvas.width = geo.width;
   canvas.height = geo.height;
@@ -134,6 +134,7 @@ export function renderFrame(canvas: HTMLCanvasElement, g: ForecastGrid, layer: L
   }
   ctx.putImageData(img, 0, 0);
 
+  if (!land) return; // world view: no clipping
   // Keep only the land
   ctx.globalCompositeOperation = "destination-in";
   ctx.beginPath();
