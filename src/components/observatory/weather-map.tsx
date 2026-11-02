@@ -11,6 +11,7 @@ import { Cloud, CloudFog, CloudLightning, CloudMoon, CloudRain, CloudRainWind, C
 import type { Wilayat } from "@/lib/observatory/place";
 import type { RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
+import type { FormingCell } from "@/lib/observatory/nowcast";
 import wilayatsJson from "@/lib/observatory/wilayats.json";
 import { frameOf, inGovernorate, landMask, pointWeather, renderFrame, sample, type Frame, type LayerId, type Polygons, type Symbol } from "./field";
 
@@ -81,6 +82,8 @@ interface Props {
   tracks?: { track: RainTrack; startLabel: string }[];
   /** Live satellite instead of the forecast: WMS layer name, frame times, the one shown */
   satellite?: { wms: string; times: string[]; frame: number } | null;
+  /** Storm clouds forming now (satellite), with their label */
+  forming?: { cell: FormingCell; label: string }[];
   /** Cyclone view: live storms, and a past storm being replayed (track up to `progress` 0..1) */
   cyclones?: {
     live: ActiveCyclone[];
@@ -96,7 +99,7 @@ const REGION_BOUNDS = L.latLngBounds([-8, 35], [33, 95]);
 const EUMETSAT_WMS = "https://view.eumetsat.int/geoserver/wms";
 
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones } = props;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming } = props;
   const showForecast = mode === "layers" && !satellite && !cyclones;
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -110,6 +113,7 @@ export function WeatherMap(props: Props) {
   const trackLayer = useRef<L.LayerGroup | null>(null);
   const satFrames = useRef<{ key: string; layers: L.TileLayer.WMS[] } | null>(null);
   const cycLayer = useRef<L.LayerGroup | null>(null);
+  const formLayer = useRef<L.LayerGroup | null>(null);
   const readout = useRef<HTMLDivElement>(null);
   const [zoomTick, setZoomTick] = useState(0);
   const canvas = useMemo(() => (typeof document === "undefined" ? null : document.createElement("canvas")), []);
@@ -135,6 +139,7 @@ export function WeatherMap(props: Props) {
     m.getPane("tracks")!.style.pointerEvents = "none";
     trackLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
     cycLayer.current = L.layerGroup().addTo(m);
+    formLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
     m.on("zoomend", () => setZoomTick((z) => z + 1));
     m.getPane("labels")!.style.pointerEvents = "none";
 
@@ -193,7 +198,7 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null; formLayer.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -367,6 +372,21 @@ export function WeatherMap(props: Props) {
       L.marker(all[upto], { interactive: false, icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 15], html: CYCLONE_SVG }) }).addTo(grp);
     }
   }, [cyclones, dark]);
+
+  // ── Storms forming now: an amber pulsing ring where a cloud top is shooting up ──
+  useEffect(() => {
+    const grp = formLayer.current;
+    if (!grp) return;
+    grp.clearLayers();
+    if (mode !== "layers" || cyclones || !forming) return;
+    for (const { cell, label } of forming) {
+      L.marker([cell.lat, cell.lon], {
+        pane: "tracks", interactive: false,
+        icon: L.divIcon({ className: "obs-genesis-wrap", iconSize: [140, 46], iconAnchor: [70, 13],
+          html: `<div class="obs-forming${cell.strong ? " strong" : ""}"></div><div class="obs-genesis-l">${label}</div>` }),
+      }).addTo(grp);
+    }
+  }, [forming, mode, cyclones]);
 
   // "My location": a calm dot, and the map moves there
   useEffect(() => {

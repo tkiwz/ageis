@@ -24,6 +24,7 @@ import type { MapMode } from "./weather-map";
 import { ForecastView, nearestWilayat } from "./forecast-view";
 import { directionKey, rainTracks, type RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
+import type { Nowcast } from "@/lib/observatory/nowcast";
 import cycloneHistory from "@/lib/observatory/cyclone-history.json";
 import { CAT_COLOR_UI, type HistoricStorm } from "./cyclone-types";
 
@@ -86,6 +87,8 @@ export function Observatory() {
     const id = window.setTimeout(() => setHistProgress((p) => Math.min(1, p + 0.012)), 50);
     return () => window.clearTimeout(id);
   }, [histIdx, histProgress]);
+  const nowcast = useApi<Nowcast>("/api/observatory/nowcast", { refreshMs: 10 * 60_000, enabled: tab === "layers" });
+  const [ncOpen, setNcOpen] = useState(false);
   const cycApi = useApi<{ cyclones: ActiveCyclone[]; source: string }>("/api/observatory/cyclones", { refreshMs: 15 * 60_000, enabled: layer === "cyc" });
 
   useEffect(() => {
@@ -266,6 +269,10 @@ export function Observatory() {
             agreeLabel={(a, n) => t("observatory.models.agree", { a: f.number(a), n: f.number(n) })}
             myPos={myPos}
             tracks={dayTracks.map((track) => ({ track, startLabel: trackLabel(track) }))}
+            forming={(nowcast.data?.cells ?? []).map((cell) => ({
+              cell,
+              label: `${t("observatory.nc.label")} · ${t("observatory.nc.top", { c: f.number(cell.minTopC) })}`,
+            }))}
             layer={layer === "sat" || layer === "cyc" ? "temp" : layer}
             satellite={tab === "layers" && layer === "sat" && satTimes.length ? { wms: SAT_WMS[satProduct], times: satTimes, frame: satFrame } : null}
             cyclones={tab === "layers" && layer === "cyc" ? {
@@ -301,6 +308,44 @@ export function Observatory() {
               {locating ? t("observatory.locating") : t("observatory.locate")}
             </Button>
             {locMsg && <div className={cn(PANEL, "px-3 py-2 text-xs text-muted-foreground")}>{locMsg}</div>}
+            {nowcast.data && layer !== "cyc" && (
+              <button
+                onClick={() => setNcOpen((o) => !o)}
+                aria-expanded={ncOpen}
+                className={cn(PANEL, "flex h-9 items-center gap-1.5 px-3 text-xs font-medium",
+                  nowcast.data.cells.length ? "border-warning/50 text-warning" : "text-muted-foreground")}
+              >
+                <CloudLightning className="h-4 w-4" />
+                {nowcast.data.cells.length ? t("observatory.nc.chip", { n: f.number(nowcast.data.cells.length) }) : t("observatory.nc.none")}
+              </button>
+            )}
+            {ncOpen && nowcast.data && (
+              <div className={cn(PANEL, "w-72 space-y-2 p-3 text-start")}>
+                <div className="text-sm font-semibold">{t("observatory.nc.title")}</div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">{t("observatory.nc.desc")}</p>
+                <ul className="max-h-56 space-y-1.5 overflow-y-auto">
+                  {nowcast.data.cells.slice(0, 8).map((c, k) => (
+                    <li key={k} className="rounded-lg border border-border/50 p-2 text-xs">
+                      <div className="flex items-center gap-1.5 font-semibold">
+                        <span className={cn("h-2 w-2 rounded-full", c.strong ? "bg-danger" : "bg-warning")} />
+                        {(() => {
+                          // Far from any town (e.g. over the Gulf): say how far, not just "near"
+                          const w = nearestWilayat(c.lat, c.lon);
+                          const km = Math.round(Math.hypot((c.lat - w.lat) * 111, (c.lon - w.lon) * 111 * Math.cos((c.lat * Math.PI) / 180)));
+                          const town = isAr ? w.nameAr : w.name;
+                          return km > 40 ? t("observatory.nc.away", { km: f.number(km), town }) : t("observatory.nc.near", { town });
+                        })()}
+                        {c.strong && <span className="rounded bg-danger/15 px-1 text-[10px] text-danger">{t("observatory.nc.strong")}</span>}
+                      </div>
+                      <div className="mt-0.5 text-muted-foreground">
+                        {t("observatory.nc.top", { c: f.number(c.minTopC) })} · {t("observatory.nc.cooling", { c: f.number(c.coolingPer15) })}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[10px] text-muted-foreground">{t("observatory.nc.seen", { time: f.date(nowcast.data.time, { hour: "numeric", minute: "2-digit" }) })} · Meteosat IR</div>
+              </div>
+            )}
             {myPos && mode === "layers" && (
               <MyPlace
                 grid={grid}

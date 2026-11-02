@@ -212,6 +212,19 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    nc: {
+      away: "{km} km from {town}",
+      chip: "{n} storms forming now",
+      none: "No storms forming now",
+      title: "Forming now (satellite)",
+      desc: "Cloud tops that cooled fast in the last 30 minutes — how a thunderstorm starts, often 1–3 hours before rain.",
+      near: "Near {town}",
+      top: "top {c}°C",
+      cooling: "cooling {c}° every 15 min",
+      strong: "Strong",
+      label: "Forming",
+      seen: "Seen {time}",
+    },
     acc: {
       title: "How accurate are the models here?",
       desc: "Each model's next-day forecast checked hour by hour against what Oman's airports reported ({stations}), last {days} days. The blend gives more weight to the better models.",

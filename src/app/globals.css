@@ -180,3 +180,8 @@
 .obs-cyc-t, .obs-cyc-n { display: inline-block; padding: 0 5px; border-radius: 5px; font-size: 10px; white-space: nowrap;
   color: hsl(var(--foreground)); background: hsl(var(--background) / 0.85); border: 1px solid hsl(var(--border) / 0.7); }
 .obs-cyc-n { font-size: 12px; font-weight: 700; }
+/* Storm clouds forming now (satellite) */
+.obs-forming { width: 26px; height: 26px; border-radius: 999px; border: 2.5px solid #e3a13c; background: rgb(227 161 60 / 0.2); }
+.obs-forming.strong { border-color: #d0533f; background: rgb(208 83 63 / 0.22); }
+@media (prefers-reduced-motion: no-preference) { .obs-forming { animation: obs-forming 1.6s ease-out infinite; } }
+@keyframes obs-forming { 0% { box-shadow: 0 0 0 0 rgb(227 161 60 / 0.6); } 100% { box-shadow: 0 0 0 16px rgb(227 161 60 / 0); } }
