@@ -212,16 +212,6 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
-    windy: {
-      tab: "Windy",
-      rain: "Rain",
-      wind: "Wind",
-      temp: "Temperature",
-      clouds: "Clouds",
-      thunder: "Thunderstorms",
-      dust: "Dust",
-      note: "Map by Windy.com — for comparison",
-    },
     panel: {
       title: "Layers",
       base: "Background",
@@ -256,6 +246,7 @@ export const coreNs = {
       seen: "Seen {time}",
     },
     acc: {
+      modelN: "Model {n}",
       title: "How accurate are the models here?",
       desc: "Each model's next-day forecast checked hour by hour against what Oman's airports reported ({stations}), last {days} days. The blend gives more weight to the better models.",
       model: "Model",
@@ -302,12 +293,12 @@ export const coreNs = {
       },
       zones: "Wind zones: 60 / 90 / 120 km/h",
       cone: "Dashed area = where the centre may go",
-      source: "Live: GDACS (EC JRC) · history: IBTrACS (NOAA)",
+      source: "Live tracking and records since 1977",
     },
     sat: {
       layer: "Satellite",
       title: "Live satellite images",
-      source: "Meteosat · EUMETSAT, every 15 minutes",
+      source: "Live, every 15 minutes",
       ago: "{n} min ago",
       products: {
         natural: "True colour",
@@ -380,7 +371,7 @@ export const coreNs = {
     },
     fc: {
       heavyChance: "Heavy (5 mm+): {v}%",
-      ensembleNote: "Chance of rain = share of the {n} runs of the ECMWF ensemble that rain at that time.",
+      ensembleNote: "Chance of rain = share of {n} forecast scenarios that rain at that time.",
       tab: "Forecast",
       pick: "Wilayat",
       nearest: "Nearest to me",

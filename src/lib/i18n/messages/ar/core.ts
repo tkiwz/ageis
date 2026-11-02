@@ -212,16 +212,6 @@ export const coreNs: CoreMessages = {
     showLess: "عرض أقل",
   },
   observatory: {
-    windy: {
-      tab: "Windy",
-      rain: "الأمطار",
-      wind: "الرياح",
-      temp: "الحرارة",
-      clouds: "الغيوم",
-      thunder: "العواصف الرعدية",
-      dust: "الغبار",
-      note: "الخريطة من Windy.com — للمقارنة",
-    },
     panel: {
       title: "الطبقات",
       base: "الخلفية",
@@ -256,6 +246,7 @@ export const coreNs: CoreMessages = {
       seen: "رُصدت {time}",
     },
     acc: {
+      modelN: "النموذج {n}",
       title: "ما مدى دقة النماذج هنا؟",
       desc: "توقع كل نموذج لليوم التالي يُقارن ساعة بساعة بما سجّلته مطارات عُمان ({stations}) خلال آخر {days} يوم. الإجماع يعطي وزناً أكبر للنماذج الأدق.",
       model: "النموذج",
@@ -302,12 +293,12 @@ export const coreNs: CoreMessages = {
       },
       zones: "مناطق الرياح: 60 / 90 / 120 كم/س",
       cone: "المنطقة المتقطعة = المكان المحتمل لمرور مركز العاصفة",
-      source: "مباشر: GDACS (المفوضية الأوروبية) · السجل: IBTrACS (NOAA)",
+      source: "تتبّع مباشر وسجل منذ 1977",
     },
     sat: {
       layer: "الأقمار",
       title: "صور الأقمار الصناعية مباشرة",
-      source: "القمر Meteosat · EUMETSAT، كل 15 دقيقة",
+      source: "مباشر، كل 15 دقيقة",
       ago: "قبل {n} دقيقة",
       products: {
         natural: "صورة حقيقية",
@@ -380,7 +371,7 @@ export const coreNs: CoreMessages = {
     },
     fc: {
       heavyChance: "غزير (5 ملم+): {v}%",
-      ensembleNote: "احتمال المطر = نسبة السيناريوهات من {n} تشغيل لمجموعة ECMWF اللي فيها مطر في ذاك الوقت.",
+      ensembleNote: "احتمال المطر = نسبة السيناريوهات (من {n}) اللي فيها مطر في ذاك الوقت.",
       tab: "التوقعات",
       pick: "الولاية",
       nearest: "الأقرب لي",

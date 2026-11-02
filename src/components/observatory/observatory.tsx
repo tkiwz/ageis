@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils";
 import { BANDS, LEGEND, frameOf, govAt, legendGradient, sample, type GovInfo, type LayerId } from "./field";
 import type { MapMode } from "./weather-map";
 import { ForecastView, nearestWilayat } from "./forecast-view";
-import { WindyView } from "./windy-view";
 import { directionKey, rainTracks, type RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import type { Nowcast } from "@/lib/observatory/nowcast";
@@ -30,7 +29,7 @@ import type { StationReading } from "@/lib/observatory/stations";
 import cycloneHistory from "@/lib/observatory/cyclone-history.json";
 import { CAT_COLOR_UI, type HistoricStorm } from "./cyclone-types";
 
-type Tab = MapMode | "forecast" | "windy";
+type Tab = MapMode | "forecast";
 
 const WeatherMap = dynamic(() => import("./weather-map").then((m) => m.WeatherMap), {
   ssr: false,
@@ -209,8 +208,8 @@ export function Observatory() {
           </div>
         </Link>
         <nav className="mx-auto flex rounded-lg bg-muted p-1" aria-label={t("observatory.title")}>
-          {(["layers", "warnings", "forecast", "windy"] as Tab[]).map((m) => {
-            const Icon = m === "layers" ? MapIcon : m === "warnings" ? ShieldAlert : m === "forecast" ? CalendarDays : Wind;
+          {(["layers", "warnings", "forecast"] as Tab[]).map((m) => {
+            const Icon = m === "layers" ? MapIcon : m === "warnings" ? ShieldAlert : CalendarDays;
             const count = m === "warnings" ? (warnings.data?.warnings.filter((w) => w.day === warnings.data?.days[0]).length ?? 0) : 0;
             return (
               <button
@@ -224,7 +223,7 @@ export function Observatory() {
               >
                 <Icon className="h-4 w-4" />
                 <span className={cn(tab !== m && "hidden sm:inline")}>
-                  {t(m === "layers" ? "observatory.tabs.map" : m === "warnings" ? "observatory.tabs.warnings" : m === "forecast" ? "observatory.fc.tab" : "observatory.windy.tab")}
+                  {t(m === "layers" ? "observatory.tabs.map" : m === "warnings" ? "observatory.tabs.warnings" : "observatory.fc.tab")}
                 </span>
                 {count > 0 && <span className="rounded-full bg-warning/20 px-1.5 text-[10px] font-semibold text-warning tabular-nums">{f.number(count)}</span>}
               </button>
@@ -252,9 +251,7 @@ export function Observatory() {
 
       {/* ── Map area ── */}
       <main className="relative min-h-0 flex-1">
-        {tab === "windy" ? (
-          <WindyView />
-        ) : tab === "forecast" ? (
+        {tab === "forecast" ? (
           <ForecastView
             warnings={warnings.data?.warnings ?? []}
             myPos={myPos}
@@ -305,7 +302,7 @@ export function Observatory() {
           </div>
         )}
 
-        {grid && tab !== "forecast" && tab !== "windy" && (
+        {grid && tab !== "forecast" && (
           <div
             className={cn(
               "absolute top-3 z-[1000] flex w-64 flex-col items-end gap-2 sm:top-5",
@@ -353,7 +350,7 @@ export function Observatory() {
                     </li>
                   ))}
                 </ul>
-                <div className="text-[10px] text-muted-foreground">{t("observatory.nc.seen", { time: f.date(nowcast.data.time, { hour: "numeric", minute: "2-digit" }) })} · Meteosat IR</div>
+                <div className="text-[10px] text-muted-foreground">{t("observatory.nc.seen", { time: f.date(nowcast.data.time, { hour: "numeric", minute: "2-digit" }) })}</div>
               </div>
             )}
             {myPos && mode === "layers" && (

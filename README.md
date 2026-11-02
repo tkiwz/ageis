@@ -49,9 +49,21 @@ A public page (no sign-in): a 7-day forecast map of Oman and yellow / orange / r
 
 | What | Source | Licence |
 |---|---|---|
-| Forecast (0.5° grid, 3-hour steps, 7 days) | [Open-Meteo](https://open-meteo.com) | CC BY 4.0 |
-| Governorate boundaries (11) | OpenStreetMap via Nominatim | ODbL |
-| Basemap and labels | Esri World Gray Canvas | Esri terms |
+| Forecast grid, wilayat forecasts (0.5° grid, 3-hour steps, 7 days) | [Open-Meteo](https://open-meteo.com) | CC BY 4.0 |
+| Rain blend: ECMWF IFS, ECMWF AIFS, UK Met Office, DWD ICON, NOAA GFS | via Open-Meteo | CC BY 4.0 |
+| Rain probability (51 scenarios) | ECMWF ensemble via Open-Meteo | CC BY 4.0 |
+| Dust (5 days) | CAMS (Copernicus) via Open-Meteo | CC BY 4.0 |
+| Model calibration — measured readings at Muscat, Salalah, Sohar, Duqm, Khasab, Adam | METAR, [aviationweather.gov](https://aviationweather.gov) (NOAA) | US public domain |
+| Previous model runs (for calibration) | Open-Meteo Previous Runs API | CC BY 4.0 |
+| Live satellite (true colour, dust, storms, infrared) and storms forming | Meteosat IODC, [EUMETSAT](https://view.eumetsat.int) | EUMETSAT data policy |
+| Active cyclones (track, cone, wind zones) | [GDACS](https://www.gdacs.org) (EC JRC), tracks from JTWC | GDACS terms |
+| Cyclone memory since 1977 | IBTrACS v04 (NOAA NCEI) | public domain |
+| Governorates (11) and wilayats (63) | OpenStreetMap via Nominatim / Overpass | ODbL |
+| Basemap: imagery, hillshade, places; calm grey | Esri World Imagery / Hillshade / Gray Canvas | Esri terms |
+
+The public page shows its own interface only; the sources above are credited here. The map corner keeps the
+short "© OpenStreetMap · Esri" line, which those tile licences require. CC BY 4.0 and the EUMETSAT and GDACS
+terms also ask for credit wherever the data is shown, so check with them before using the observatory commercially.
 
 **Warning thresholds**, applied to the worst grid point inside each governorate, per day in Oman time
 (`src/lib/observatory/warnings.ts`):

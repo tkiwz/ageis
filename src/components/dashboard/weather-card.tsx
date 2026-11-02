@@ -100,7 +100,7 @@ export function WeatherCard() {
               })}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[10px] text-muted-foreground">{t("weather.source", { source: data?.source ?? "" })}</span>
+              <span />
               {sites.length > COLLAPSED && (
                 <Button size="sm" variant="ghost" onClick={() => setExpanded((v) => !v)}>
                   {expanded ? t("weather.showLess") : t("weather.showAll", { n: sites.length })}

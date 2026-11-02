@@ -219,7 +219,6 @@ export function ForecastView({ warnings, myPos, onLocate, onShowOnMap }: {
           )}
         </section>
         <AccuracyCard />
-        <p className="text-center text-[11px] text-muted-foreground">Open-Meteo · aviationweather.gov · © OpenStreetMap</p>
       </div>
     </div>
   );

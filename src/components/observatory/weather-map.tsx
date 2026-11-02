@@ -231,10 +231,10 @@ export function WeatherMap(props: Props) {
     tiles.current?.hill?.remove();
     liveIr.current?.remove();
     liveIr.current = null;
-    const attribution = "Esri · © OpenStreetMap · Open-Meteo";
+    const attribution = "© OpenStreetMap · Esri"; // map-tile licences; all other sources are listed in the README
     if (base === "live") {
       tiles.current = {
-        base: L.tileLayer(ESRI_IMAGERY, { attribution: `${attribution} · EUMETSAT`, maxZoom: 16 }).addTo(m),
+        base: L.tileLayer(ESRI_IMAGERY, { attribution, maxZoom: 16 }).addTo(m),
         hill: L.tileLayer(ESRI_HILLSHADE, { maxZoom: 16, className: "obs-hillshade" }).addTo(m),
         labels: L.tileLayer(ESRI_PLACES, { maxZoom: 16, pane: "labels" }).addTo(m),
       };
@@ -368,7 +368,7 @@ export function WeatherMap(props: Props) {
     if (!current) {
       current = L.tileLayer.wms(EUMETSAT_WMS, {
         layers: satellite.wms, format: "image/png", transparent: true, version: "1.3.0",
-        attribution: "EUMETSAT", opacity: 0, TIME: time, maxZoom: 10,
+        opacity: 0, TIME: time, maxZoom: 10,
       } as L.WMSOptions & { TIME: string }).addTo(m);
       cache.layers.push(current);
     }
