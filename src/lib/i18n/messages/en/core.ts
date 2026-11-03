@@ -212,6 +212,19 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    hist: {
+      tab: "History",
+      title: "What happened before",
+      desc: "Major weather events in Oman, with the rain and wind that were actually recorded, and the warning level our thresholds would have given.",
+      score: "Our thresholds would have given a red warning in {n} of {total} events.",
+      cyclone: "Cyclone",
+      flood: "Floods",
+      rainMax: "Most rain in a day: {v} mm",
+      gustMax: "Strongest gust: {v} km/h",
+      ourRain: "Rain warning",
+      ourWind: "Wind warning",
+      replay: "Show its path",
+    },
     wadi: {
       overlay: "Wadi flood risk",
       title: "Wadis that may flow",
