@@ -212,6 +212,15 @@ export const coreNs: CoreMessages = {
     showLess: "عرض أقل",
   },
   observatory: {
+    guide: {
+      tab: "الإرشادات",
+      title: "ماذا تفعل",
+      desc: "خطوات بسيطة قبل وأثناء وبعد كل خطر.",
+      emergency: "الطوارئ 9999",
+      before: "قبل",
+      during: "أثناء",
+      after: "بعد",
+    },
     hist: {
       tab: "السجل",
       title: "ماذا حدث سابقاً",

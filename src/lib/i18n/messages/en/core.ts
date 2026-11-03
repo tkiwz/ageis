@@ -212,6 +212,15 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    guide: {
+      tab: "Safety",
+      title: "What to do",
+      desc: "Simple steps before, during and after each hazard.",
+      emergency: "Emergency 9999",
+      before: "Before",
+      during: "During",
+      after: "After",
+    },
     hist: {
       tab: "History",
       title: "What happened before",

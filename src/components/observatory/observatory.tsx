@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
-  CalendarDays, History as HistoryIcon, Cloud, CloudFog, Satellite, Tornado, Waves, Activity, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
+  CalendarDays, History as HistoryIcon, LifeBuoy, Cloud, CloudFog, Satellite, Tornado, Waves, Activity, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
   ShieldCheck, Thermometer, Wind, X, type LucideIcon,
 } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
@@ -23,6 +23,7 @@ import { BANDS, LEGEND, frameOf, govAt, legendGradient, sample, type GovInfo, ty
 import type { MapMode } from "./weather-map";
 import { ForecastView, nearestWilayat } from "./forecast-view";
 import { HistoryView } from "./history-view";
+import { GuidanceView } from "./guidance-view";
 import { directionKey, rainTracks, type RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import type { Nowcast } from "@/lib/observatory/nowcast";
@@ -33,7 +34,7 @@ import type { WadiRiskResult } from "@/lib/observatory/wadi-risk";
 import cycloneHistory from "@/lib/observatory/cyclone-history.json";
 import { CAT_COLOR_UI, type HistoricStorm } from "./cyclone-types";
 
-type Tab = MapMode | "forecast" | "history";
+type Tab = MapMode | "forecast" | "history" | "guide";
 
 const WeatherMap = dynamic(() => import("./weather-map").then((m) => m.WeatherMap), {
   ssr: false,
@@ -249,8 +250,8 @@ export function Observatory() {
           </div>
         </Link>
         <nav className="mx-auto flex rounded-lg bg-muted p-1" aria-label={t("observatory.title")}>
-          {(["layers", "warnings", "forecast", "history"] as Tab[]).map((m) => {
-            const Icon = m === "layers" ? MapIcon : m === "warnings" ? ShieldAlert : m === "forecast" ? CalendarDays : HistoryIcon;
+          {(["layers", "warnings", "forecast", "history", "guide"] as Tab[]).map((m) => {
+            const Icon = m === "layers" ? MapIcon : m === "warnings" ? ShieldAlert : m === "forecast" ? CalendarDays : m === "history" ? HistoryIcon : LifeBuoy;
             const count = m === "warnings" ? (warnings.data?.warnings.filter((w) => w.day === warnings.data?.days[0]).length ?? 0) : 0;
             return (
               <button
@@ -264,7 +265,7 @@ export function Observatory() {
               >
                 <Icon className="h-4 w-4" />
                 <span className={cn(tab !== m && "hidden sm:inline")}>
-                  {t(m === "layers" ? "observatory.tabs.map" : m === "warnings" ? "observatory.tabs.warnings" : m === "forecast" ? "observatory.fc.tab" : "observatory.hist.tab")}
+                  {t(m === "layers" ? "observatory.tabs.map" : m === "warnings" ? "observatory.tabs.warnings" : m === "forecast" ? "observatory.fc.tab" : m === "history" ? "observatory.hist.tab" : "observatory.guide.tab")}
                 </span>
                 {count > 0 && <span className="rounded-full bg-warning/20 px-1.5 text-[10px] font-semibold text-warning tabular-nums">{f.number(count)}</span>}
               </button>
@@ -292,7 +293,9 @@ export function Observatory() {
 
       {/* ── Map area ── */}
       <main className="relative min-h-0 flex-1">
-        {tab === "history" ? (
+        {tab === "guide" ? (
+          <GuidanceView />
+        ) : tab === "history" ? (
           <HistoryView onReplay={(storm, year) => {
             const k = HISTORY.findIndex((st) => st.year === year && st.name === storm);
             setTab("layers"); setLayer("cyc");
@@ -360,7 +363,7 @@ export function Observatory() {
           </div>
         )}
 
-        {grid && tab !== "forecast" && tab !== "history" && (
+        {grid && tab !== "forecast" && tab !== "history" && tab !== "guide" && (
           <div
             className={cn(
               "absolute top-3 z-[1000] flex w-64 flex-col items-end gap-2 sm:top-5",

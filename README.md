@@ -58,6 +58,12 @@ A public page (no sign-in): a 7-day forecast map of Oman and yellow / orange / r
 | Live satellite (true colour, dust, storms, infrared) and storms forming | Meteosat IODC, [EUMETSAT](https://view.eumetsat.int) | EUMETSAT data policy |
 | Active cyclones (track, cone, wind zones) | [GDACS](https://www.gdacs.org) (EC JRC), tracks from JTWC | GDACS terms |
 | Cyclone memory since 1977 | IBTrACS v04 (NOAA NCEI) | public domain |
+| Wilayat forecasts (primary, hourly, ~9 days) | [MET Norway](https://api.met.no) Locationforecast 2.0 | CC BY 4.0 (commercial use allowed) |
+| Wave height (7 days) | NOAA WaveWatch III via PacIOOS ERDDAP | US public domain |
+| Earthquakes (30 days, M2.5+) | [USGS](https://earthquake.usgs.gov) real-time catalogue | US public domain |
+| Wadis (186 named courses) and road crossings / fords (3,228) | OpenStreetMap via Overpass | ODbL |
+| History: rain and gusts recorded at past events | ERA5 reanalysis (Copernicus / ECMWF) via Open-Meteo archive, fetched once | CC BY 4.0 |
+| Global live clouds outside Meteosat's view | NASA GIBS (GOES-East/West, Himawari) | NASA open data |
 | Governorates (11) and wilayats (63) | OpenStreetMap via Nominatim / Overpass | ODbL |
 | Basemap: imagery, hillshade, places; calm grey | Esri World Imagery / Hillshade / Gray Canvas | Esri terms |
 
