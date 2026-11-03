@@ -168,6 +168,9 @@ export function ForecastView({ warnings, myPos, onLocate, onShowOnMap }: {
                   {(() => {
                     // Prefer the 51-run ECMWF ensemble: share of runs with at least 1 mm that day
                     const p = data.ensemble ? Math.round(data.ensemble.day1mm[k] * 100) : Math.round(data.daily.rainProb[k]);
+                    if (p < 0) {
+                      return <span className="text-[11px] tabular-nums text-muted-foreground">{t("observatory.fc.rainMm", { v: f.number(data.daily.rain[k]) })}</span>;
+                    }
                     return (
                       <span className={cn("text-[11px] tabular-nums", p >= 40 ? "text-info" : "text-muted-foreground")}>
                         {t("observatory.fc.rainChance", { v: f.number(p) })}

@@ -1,8 +1,11 @@
 /**
- * Detailed 7-day forecast for one wilayat (its main town), hourly + daily,
- * from Open-Meteo. Cached per place for 1 hour.
+ * Detailed 7-day forecast for one wilayat (its main town), hourly + daily.
+ * Primary source: MET Norway (free, commercial use allowed); Open-Meteo is the
+ * fallback. Rain probability comes from the ECMWF ensemble when available.
+ * Cached per place for 1 hour.
  */
 import { unstable_cache } from "next/cache";
+import { metnoHourly, sunTimes } from "./metno";
 import wilayats from "./wilayats.json";
 
 export interface Wilayat { id: string; name: string; nameAr: string; gov: string; lat: number; lon: number }
@@ -41,7 +44,59 @@ const OMAN = "+04:00";
 const iso = (local: string) => `${local.length === 16 ? `${local}:00` : local}${OMAN}`;
 const nums = (a: (number | null)[]) => a.map((v) => (v === null ? 0 : Math.round(v * 10) / 10));
 
+/** UTC ISO → Oman local "YYYY-MM-DDTHH:mm:00+04:00" (the shape the rest of the place forecast uses). */
+const toOman = (utc: string) => `${new Date(Date.parse(utc) + 4 * 3600_000).toISOString().slice(0, 16)}:00${OMAN}`;
+const r1 = (v: number) => Math.round(v * 10) / 10;
+
+async function fromMetno(place: Wilayat): Promise<PlaceForecast> {
+  const pts = await metnoHourly(place.lat, place.lon, 168);
+  const time = pts.map((p) => toOman(p.time));
+  const dates = [...new Set(time.map((t) => t.slice(0, 10)))].slice(0, 7);
+  const dayOf = (d: string) => pts.filter((_, k) => time[k].startsWith(d));
+  const hourlyIso = time;
+  const ensemble = await fetchEnsemble(place, dates, hourlyIso);
+  const daily = dates.map((d) => {
+    const ps = dayOf(d);
+    const rain = ps.reduce((s, p) => s + p.rain, 0);
+    const probs = ps.map((p) => p.rainProb).filter((v): v is number => v !== null);
+    // Most significant weather of the day: storms > rain > fog > clouds
+    const code = Math.max(...ps.map((p) => p.code));
+    const sun = sunTimes(d, place.lat, place.lon);
+    return {
+      code, max: r1(Math.max(...ps.map((p) => p.temp))), min: r1(Math.min(...ps.map((p) => p.temp))), rain: r1(rain),
+      rainProb: probs.length ? Math.max(...probs) : -1, // -1 = no probability in the feed (the UI shows mm instead)
+      gust: r1(Math.max(...ps.map((p) => p.gust))), uv: r1(Math.max(...ps.map((p) => p.uv))),
+      sunrise: toOman(sun.sunrise), sunset: toOman(sun.sunset),
+    };
+  });
+  const c = pts[0];
+  return {
+    place, generatedAt: new Date().toISOString(), ensemble,
+    current: { time: time[0], temp: r1(c.temp), feels: r1(c.feels), humidity: Math.round(c.humidity), code: c.code, wind: r1(c.wind), gust: r1(c.gust), dir: Math.round(c.dir) },
+    hourly: {
+      time, temp: pts.map((p) => r1(p.temp)), feels: pts.map((p) => r1(p.feels)), humidity: pts.map((p) => Math.round(p.humidity)),
+      rainProb: pts.map((p) => p.rainProb ?? 0), rain: pts.map((p) => r1(p.rain)), code: pts.map((p) => p.code),
+      wind: pts.map((p) => r1(p.wind)), gust: pts.map((p) => r1(p.gust)), dir: pts.map((p) => Math.round(p.dir)), uv: pts.map((p) => r1(p.uv)),
+    },
+    daily: {
+      date: dates, code: daily.map((x) => x.code), max: daily.map((x) => x.max), min: daily.map((x) => x.min),
+      rain: daily.map((x) => x.rain), rainProb: daily.map((x) => x.rainProb), gust: daily.map((x) => x.gust),
+      sunrise: daily.map((x) => x.sunrise), sunset: daily.map((x) => x.sunset), uv: daily.map((x) => x.uv),
+    },
+  };
+}
+
 async function fetchPlace(id: string): Promise<PlaceForecast | null> {
+  const known = WILAYATS.find((w) => w.id === id);
+  if (!known) return null;
+  try {
+    return await fromMetno(known);
+  } catch {
+    return fetchOpenMeteoPlace(id); // fallback
+  }
+}
+
+async function fetchOpenMeteoPlace(id: string): Promise<PlaceForecast | null> {
   const place = WILAYATS.find((w) => w.id === id);
   if (!place) return null;
   const url = "https://api.open-meteo.com/v1/forecast"
@@ -75,4 +130,4 @@ async function fetchPlace(id: string): Promise<PlaceForecast | null> {
   };
 }
 
-export const getPlaceForecast = unstable_cache(fetchPlace, ["observatory-place-v2"], { revalidate: 3600 });
+export const getPlaceForecast = unstable_cache(fetchPlace, ["observatory-place-v3"], { revalidate: 3600 });

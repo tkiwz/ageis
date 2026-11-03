@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
-  CalendarDays, Cloud, CloudFog, Satellite, Tornado, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
+  CalendarDays, Cloud, CloudFog, Satellite, Tornado, Waves, Activity, CloudLightning, Haze, CloudRain, Loader2, LocateFixed, Map as MapIcon, Pause, Play, RefreshCw, Share2, ShieldAlert,
   ShieldCheck, Thermometer, Wind, X, type LucideIcon,
 } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
@@ -26,6 +26,8 @@ import { directionKey, rainTracks, type RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import type { Nowcast } from "@/lib/observatory/nowcast";
 import type { StationReading } from "@/lib/observatory/stations";
+import type { WaveGrid } from "@/lib/observatory/marine";
+import type { Quake } from "@/lib/observatory/quakes";
 import cycloneHistory from "@/lib/observatory/cyclone-history.json";
 import { CAT_COLOR_UI, type HistoricStorm } from "./cyclone-types";
 
@@ -40,6 +42,7 @@ const WeatherMap = dynamic(() => import("./weather-map").then((m) => m.WeatherMa
 const LEVEL_COLOR: Record<Level, string> = { 0: "transparent", 1: "#e3c14f", 2: "#e08a3c", 3: "#c8463d" };
 const LAYERS: { id: LayerId; icon: LucideIcon }[] = [
   { id: "temp", icon: Thermometer }, { id: "rain", icon: CloudRain }, { id: "wind", icon: Wind }, { id: "cloud", icon: Cloud }, { id: "dust", icon: Haze },
+  { id: "sea", icon: Waves },
 ];
 const HAZARD_ICON: Record<Hazard, LucideIcon> = { RAIN: CloudRain, WIND: Wind, STORM: CloudLightning, HEAT: Thermometer, DUST: Haze, FOG: CloudFog };
 const ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
@@ -80,7 +83,20 @@ export function Observatory() {
     viewBox ? `/api/observatory/view?bbox=${lo(viewBox.lat0)},${lo(viewBox.lon0)},${hi(viewBox.lat1)},${hi(viewBox.lon1)}` : "/api/observatory/view?bbox=0,0,0,0",
     { enabled: tab === "layers" && outsideOman, refreshMs: 30 * 60_000 },
   );
-  const [overlays, setOverlays] = useState({ stations: true, symbols: true, forming: true });
+  const [overlays, setOverlays] = useState({ stations: true, symbols: true, forming: true, quakes: true });
+  const waves = useApi<WaveGrid>("/api/observatory/waves", { enabled: tab === "layers" && layer === "sea", refreshMs: 3 * 3600_000 });
+  const quakes = useApi<{ quakes: Quake[] }>("/api/observatory/quakes", { enabled: tab === "layers" && overlays.quakes, refreshMs: 10 * 60_000 });
+  const [eqOpen, setEqOpen] = useState(false);
+  // The wave model as a grid the map already knows how to draw (only the sea layer is filled)
+  const seaGrid = useMemo<ForecastGrid | null>(() => {
+    const w = waves.data;
+    if (!w) return null;
+    const N = w.hs.length, z = new Array<number>(N).fill(0);
+    return {
+      generatedAt: "", grid: w.grid, times: w.times, temp: z, rain: z, wind: z, dir: z, gust: z, cloud: z, code: z, dust: z,
+      rainAgree: z, rainModels: [], sea: w.hs,
+    };
+  }, [waves.data]);
   const stations = useApi<{ stations: StationReading[] }>("/api/observatory/stations", { refreshMs: 10 * 60_000, enabled: tab === "layers" && overlays.stations });
   const [histProgress, setHistProgress] = useState(1);
   const [satProduct, setSatProduct] = useState<SatProduct>("natural");
@@ -211,7 +227,7 @@ export function Observatory() {
   }
 
   const formatValue = (ly: LayerId, v: number, dirDeg?: number) => {
-    const n = ly === "rain" ? (v < 0.1 ? "0" : v.toFixed(1)) : Math.round(v).toString();
+    const n = ly === "rain" ? (v < 0.1 ? "0" : v.toFixed(1)) : ly === "sea" ? v.toFixed(1) : Math.round(v).toString();
     const base = t(`observatory.readout.${ly}` as MessageKey, { v: f.number(Number(n)) });
     if (ly !== "wind" || dirDeg === undefined) return base;
     return `${base} ${ARROWS[Math.round((((dirDeg + 180) % 360) / 45)) % 8]}`;
@@ -296,7 +312,8 @@ export function Observatory() {
             myPos={myPos}
             tracks={dayTracks.map((track) => ({ track, startLabel: trackLabel(track) }))}
             base={base}
-            viewGrid={outsideOman && layer !== "sat" ? viewApi.data : null}
+            viewGrid={layer === "sea" ? seaGrid : outsideOman && layer !== "sat" ? viewApi.data : null}
+            quakes={overlays.quakes ? quakes.data?.quakes ?? null : null}
             onView={setViewBox}
             stations={overlays.stations ? stations.data?.stations ?? null : null}
             showSymbols={overlays.symbols}
@@ -350,6 +367,43 @@ export function Observatory() {
                 {nowcast.data.cells.length ? t("observatory.nc.chip", { n: f.number(nowcast.data.cells.length) }) : t("observatory.nc.none")}
               </button>
             )}
+            {overlays.quakes && quakes.data && layer !== "cyc" && (() => {
+              const week = quakes.data.quakes.filter((q) => Date.now() - Date.parse(q.time) < 7 * 864e5);
+              return (
+                <>
+                  <button onClick={() => setEqOpen((o) => !o)} aria-expanded={eqOpen}
+                    className={cn(PANEL, "flex h-9 items-center gap-1.5 px-3 text-xs font-medium", week.length ? "text-foreground" : "text-muted-foreground")}>
+                    <Activity className="h-4 w-4" />
+                    {week.length ? t("observatory.eq.chip", { n: f.number(week.length) }) : t("observatory.eq.none")}
+                  </button>
+                  {eqOpen && (
+                    <div className={cn(PANEL, "w-72 space-y-2 p-3 text-start")}>
+                      <div className="text-sm font-semibold">{t("observatory.eq.title")}</div>
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">{t("observatory.eq.desc")}</p>
+                      <ul className="max-h-56 space-y-1.5 overflow-y-auto">
+                        {quakes.data.quakes.slice(0, 12).map((q) => {
+                          const w = nearestWilayat(q.lat, q.lon);
+                          const km = Math.round(Math.hypot((q.lat - w.lat) * 111, (q.lon - w.lon) * 111 * Math.cos((q.lat * Math.PI) / 180)));
+                          return (
+                            <li key={q.id} className="rounded-lg border border-border/50 p-2 text-xs">
+                              <div className="flex items-center gap-1.5 font-semibold">
+                                <span className={cn("h-2 w-2 rounded-full", Date.now() - Date.parse(q.time) < 864e5 ? "bg-danger" : q.mag >= 4.5 ? "bg-warning" : "bg-muted-foreground")} />
+                                {t("observatory.eq.mag", { m: f.number(q.mag) })}
+                                <span className="ms-auto font-normal text-muted-foreground">{f.relative(q.time)}</span>
+                              </div>
+                              <div className="mt-0.5 text-muted-foreground">
+                                {t("observatory.eq.from", { km: f.number(km), town: isAr ? w.nameAr : w.name })} · {t("observatory.eq.depth", { d: f.number(q.depthKm) })}
+                              </div>
+                              {q.tsunami && <div className="mt-0.5 font-medium text-danger">{t("observatory.eq.tsunami")}</div>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             {ncOpen && nowcast.data && (
               <div className={cn(PANEL, "w-72 space-y-2 p-3 text-start")}>
                 <div className="text-sm font-semibold">{t("observatory.nc.title")}</div>
@@ -711,8 +765,8 @@ const LAYER_ITEMS: { id: AnyLayer; icon: LucideIcon }[] = [...LAYERS, { id: "sat
 /** NCM-style side panel: background, one weather layer, and what else to draw. Folds away on phones. */
 function LayersPanel({ layer, onLayer, base, onBase, overlays, onOverlay, children }: {
   layer: AnyLayer; onLayer: (l: AnyLayer) => void; base: "live" | "calm"; onBase: (b: "live" | "calm") => void;
-  overlays: { stations: boolean; symbols: boolean; forming: boolean };
-  onOverlay: (k: "stations" | "symbols" | "forming", v: boolean) => void;
+  overlays: { stations: boolean; symbols: boolean; forming: boolean; quakes: boolean };
+  onOverlay: (k: "stations" | "symbols" | "forming" | "quakes", v: boolean) => void;
   children?: React.ReactNode;
 }) {
   const { t } = useI18n();
@@ -762,10 +816,10 @@ function LayersPanel({ layer, onLayer, base, onBase, overlays, onOverlay, childr
             </fieldset>
             <fieldset>
               <legend className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("observatory.panel.overlays")}</legend>
-              {(["stations", "symbols", "forming"] as const).map((k) => (
+              {(["stations", "symbols", "forming", "quakes"] as const).map((k) => (
                 <label key={k} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-accent">
                   <input type="checkbox" checked={overlays[k]} onChange={(e) => onOverlay(k, e.target.checked)} className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" />
-                  {t(`observatory.panel.${k}`)}
+                  {k === "quakes" ? t("observatory.eq.overlay") : t(`observatory.panel.${k}`)}
                 </label>
               ))}
             </fieldset>

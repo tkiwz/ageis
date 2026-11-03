@@ -212,6 +212,17 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    eq: {
+      overlay: "Earthquakes",
+      chip: "{n} earthquakes this week",
+      title: "Earthquakes near Oman",
+      desc: "Last 30 days, magnitude 2.5 and above. Bigger dot = stronger; red = last 24 hours.",
+      mag: "Magnitude {m}",
+      depth: "depth {d} km",
+      from: "{km} km from {town}",
+      tsunami: "Tsunami alert issued",
+      none: "No earthquakes nearby this week",
+    },
     cycFc: {
       gust: "gusts {v} km/h",
       rain: "rain {v} mm",
@@ -227,6 +238,7 @@ export const coreNs = {
       symbols: "Town forecasts",
       forming: "Storms forming",
       desc: {
+        sea: "Wave height at sea",
         temp: "Air temperature",
         rain: "Rain, where it forms and goes",
         wind: "Wind speed and flow",
@@ -342,6 +354,7 @@ export const coreNs = {
       NW: "north-west",
     },
     bands: {
+      sea: { "0": "Calm", "1": "Slight", "2": "Moderate", "3": "Rough" },
       temp: {
         "0": "Cool",
         "1": "Mild",
@@ -374,6 +387,7 @@ export const coreNs = {
       },
     },
     fc: {
+      rainMm: "{v} mm rain",
       heavyChance: "Heavy (5 mm+): {v}%",
       ensembleNote: "Chance of rain = share of {n} forecast scenarios that rain at that time.",
       tab: "Forecast",
@@ -421,6 +435,7 @@ export const coreNs = {
       warnings: "Warnings",
     },
     layers: {
+      sea: "Waves",
       dust: "Dust",
       temp: "Temperature",
       rain: "Rain",
@@ -428,6 +443,7 @@ export const coreNs = {
       cloud: "Clouds",
     },
     units: {
+      sea: "m",
       dust: "µg/m³",
       temp: "°C",
       rain: "mm / 3 h",
@@ -435,6 +451,7 @@ export const coreNs = {
       cloud: "%",
     },
     readout: {
+      sea: "waves {v} m",
       dust: "{v} µg/m³ dust",
       temp: "{v}°",
       rain: "{v} mm",

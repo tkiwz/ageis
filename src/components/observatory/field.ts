@@ -6,7 +6,7 @@
 import type { ForecastGrid } from "@/lib/observatory/grid";
 import governorates from "@/lib/observatory/oman-governorates.json";
 
-export type LayerId = "temp" | "rain" | "wind" | "cloud" | "dust";
+export type LayerId = "temp" | "rain" | "wind" | "cloud" | "dust" | "sea";
 export type RGBA = [number, number, number, number];
 
 interface Stop { v: number; c: RGBA }
@@ -34,6 +34,10 @@ export const RAMPS: Record<LayerId, Stop[]> = {
     { v: 80, c: hex("#d9b77e", 0) }, { v: 150, c: hex("#d9b77e", 0.28) }, { v: 300, c: hex("#c99a5b", 0.45) },
     { v: 600, c: hex("#a8743c", 0.62) }, { v: 1000, c: hex("#7f5226", 0.74) },
   ],
+  sea: [
+    { v: 0.05, c: hex("#7fc4d6", 0.35) }, { v: 0.5, c: hex("#5fb0c9", 0.55) }, { v: 1.5, c: hex("#6fae8f", 0.62) },
+    { v: 2.5, c: hex("#d9c06a", 0.7) }, { v: 4, c: hex("#d0703f", 0.78) }, { v: 6, c: hex("#a63d3d", 0.85) },
+  ],
   cloud: [
     { v: 5, c: hex("#dfe3ea", 0) }, { v: 30, c: hex("#dfe3ea", 0.25) }, { v: 70, c: hex("#e9ecf1", 0.5) }, { v: 100, c: hex("#f4f5f8", 0.7) },
   ],
@@ -46,9 +50,11 @@ export const LEGEND: Record<LayerId, number[]> = {
   wind: [0, 15, 30, 45, 60],
   cloud: [0, 25, 50, 75, 100],
   dust: [0, 100, 300, 600, 1000],
+  sea: [0, 0.5, 1.5, 2.5, 4],
 };
 
 export function colorAt(layer: LayerId, v: number, dark: boolean): RGBA {
+  if (layer === "sea" && v < 0) return [0, 0, 0, 0]; // land
   const stops = RAMPS[layer];
   let c: RGBA;
   if (v <= stops[0].v) c = stops[0].c;
@@ -68,7 +74,7 @@ export interface Frame { values: Float32Array; u: Float32Array; v: Float32Array 
 
 export function frameOf(g: ForecastGrid, layer: LayerId, t: number): Frame {
   const N = g.grid.nx * g.grid.ny, base = t * N;
-  const src = layer === "temp" ? g.temp : layer === "rain" ? g.rain : layer === "cloud" ? g.cloud : layer === "dust" ? g.dust : g.wind;
+  const src = layer === "temp" ? g.temp : layer === "rain" ? g.rain : layer === "cloud" ? g.cloud : layer === "dust" ? g.dust : layer === "sea" ? g.sea ?? [] : g.wind;
   const values = new Float32Array(N), u = new Float32Array(N), v = new Float32Array(N);
   for (let n = 0; n < N; n++) {
     values[n] = src[base + n];
@@ -229,4 +235,4 @@ export function pointWeather(g: ForecastGrid, t: number, lat: number, lon: numbe
 }
 
 /** Plain-language bands under each legend (keys in observatory.bands.<layer>). */
-export const BANDS: Record<LayerId, number> = { temp: 4, rain: 4, wind: 4, cloud: 4, dust: 4 };
+export const BANDS: Record<LayerId, number> = { temp: 4, rain: 4, wind: 4, cloud: 4, dust: 4, sea: 4 };

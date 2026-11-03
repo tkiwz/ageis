@@ -31,6 +31,8 @@ export interface ForecastGrid {
   dust: number[];
   /** How many of the blended models expect rain (≥ AGREE_MM) at each point/step; `rain` is their blend */
   rainAgree: number[];
+  /** Wave height (m) when this grid carries the sea layer; -1 over land */
+  sea?: number[];
   /** Models that took part in the rain blend, with their weights */
   rainModels: { id: string; weight: number }[];
 }

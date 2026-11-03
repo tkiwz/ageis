@@ -13,6 +13,7 @@ import type { RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import type { FormingCell } from "@/lib/observatory/nowcast";
 import type { StationReading } from "@/lib/observatory/stations";
+import type { Quake } from "@/lib/observatory/quakes";
 import wilayatsJson from "@/lib/observatory/wilayats.json";
 import { frameOf, inGovernorate, landMask, pointWeather, renderFrame, sample, type Frame, type LayerId, type Polygons, type Symbol } from "./field";
 
@@ -161,6 +162,8 @@ interface Props {
   onView?: (box: { lat0: number; lon0: number; lat1: number; lon1: number }) => void;
   /** Base map: real terrain under the live Meteosat picture, or the calm grey map */
   base?: "live" | "calm";
+  /** Earthquakes to mark (last 30 days) */
+  quakes?: Quake[] | null;
   /** Measured readings at airport stations */
   stations?: StationReading[] | null;
   /** Show the forecast weather symbols over towns */
@@ -182,7 +185,7 @@ const WORLD = L.latLngBounds([-85, -200], [85, 200]);
 
 
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming, base = "live", stations, showSymbols = true, viewGrid, onView } = props;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming, base = "live", stations, showSymbols = true, viewGrid, onView, quakes } = props;
   // Raster/readout/particles use the world grid when one is in view; warnings, symbols and rain paths stay on Oman's
   const rgrid = viewGrid ?? grid;
   const isView = !!viewGrid;
@@ -207,6 +210,7 @@ export function WeatherMap(props: Props) {
   const cycLayer = useRef<L.LayerGroup | null>(null);
   const formLayer = useRef<L.LayerGroup | null>(null);
   const stationLayer = useRef<L.LayerGroup | null>(null);
+  const quakeLayer = useRef<L.LayerGroup | null>(null);
   const liveIr = useRef<L.TileLayer.WMS | null>(null);
   const globalIr = useRef<L.TileLayer[]>([]);
   const readout = useRef<HTMLDivElement>(null);
@@ -236,6 +240,7 @@ export function WeatherMap(props: Props) {
     cycLayer.current = L.layerGroup().addTo(m);
     formLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
     stationLayer.current = L.layerGroup([], { pane: "symbols" }).addTo(m);
+    quakeLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
     m.on("zoomend", () => setZoomTick((z) => z + 1));
     m.getPane("labels")!.style.pointerEvents = "none";
 
@@ -304,7 +309,7 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null; formLayer.current = null; stationLayer.current = null; liveIr.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null; formLayer.current = null; stationLayer.current = null; liveIr.current = null; quakeLayer.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -363,6 +368,22 @@ export function WeatherMap(props: Props) {
     liveIr.current?.setOpacity(off ? 0 : 0.9);
     globalIr.current.forEach((l) => l.setOpacity(off ? 0 : l instanceof L.TileLayer.WMS ? 0.9 : 0.55));
   }, [satellite, cyclones, base]);
+
+  // ── Earthquakes: dot size grows with magnitude, red in the last 24 h ──
+  useEffect(() => {
+    const grp = quakeLayer.current;
+    if (!grp) return;
+    grp.clearLayers();
+    if (mode !== "layers" || !quakes) return;
+    for (const q of quakes) {
+      const fresh = Date.now() - Date.parse(q.time) < 864e5;
+      const col = fresh ? "#d0533f" : q.mag >= 4.5 ? "#e08a3c" : "#a8b3c2";
+      L.circleMarker([q.lat, q.lon], { pane: "tracks", radius: Math.max(3, q.mag * q.mag * 0.55), color: "#ffffff", weight: 1, fillColor: col, fillOpacity: 0.75, interactive: false }).addTo(grp);
+      if (q.mag >= 4) {
+        L.marker([q.lat, q.lon], { pane: "tracks", interactive: false, icon: L.divIcon({ className: "", iconSize: [50, 14], iconAnchor: [-8, 7], html: `<span class="obs-cyc-t">M${q.mag}</span>` }) }).addTo(grp);
+      }
+    }
+  }, [quakes, mode]);
 
   // ── Measured station readings (NCM-style dots with numbers) ──
   useEffect(() => {

@@ -212,6 +212,17 @@ export const coreNs: CoreMessages = {
     showLess: "عرض أقل",
   },
   observatory: {
+    eq: {
+      overlay: "الزلازل",
+      chip: "{n} زلازل هذا الأسبوع",
+      title: "زلازل قريبة من عُمان",
+      desc: "آخر 30 يوم، بقوة 2.5 فأكثر. النقطة الأكبر = أقوى؛ الأحمر = آخر 24 ساعة.",
+      mag: "بقوة {m}",
+      depth: "عمق {d} كم",
+      from: "على بعد {km} كم من {town}",
+      tsunami: "صدر تنبيه تسونامي",
+      none: "لا توجد زلازل قريبة هذا الأسبوع",
+    },
     cycFc: {
       gust: "هبّات {v} كم/س",
       rain: "مطر {v} ملم",
@@ -227,6 +238,7 @@ export const coreNs: CoreMessages = {
       symbols: "توقعات المدن",
       forming: "تشكّل العواصف",
       desc: {
+        sea: "ارتفاع الموج في البحر",
         temp: "حرارة الجو",
         rain: "المطر ووين يتكوّن ويتجه",
         wind: "سرعة الرياح واتجاهها",
@@ -342,6 +354,7 @@ export const coreNs: CoreMessages = {
       NW: "نحو الشمال الغربي",
     },
     bands: {
+      sea: { "0": "هادئ", "1": "خفيف", "2": "متوسط", "3": "مضطرب" },
       temp: {
         "0": "بارد",
         "1": "معتدل",
@@ -374,6 +387,7 @@ export const coreNs: CoreMessages = {
       },
     },
     fc: {
+      rainMm: "مطر {v} ملم",
       heavyChance: "غزير (5 ملم+): {v}%",
       ensembleNote: "احتمال المطر = نسبة السيناريوهات (من {n}) اللي فيها مطر في ذاك الوقت.",
       tab: "التوقعات",
@@ -421,6 +435,7 @@ export const coreNs: CoreMessages = {
       warnings: "الإنذارات",
     },
     layers: {
+      sea: "الموج",
       dust: "الغبار",
       temp: "الحرارة",
       rain: "الأمطار",
@@ -428,6 +443,7 @@ export const coreNs: CoreMessages = {
       cloud: "الغيوم",
     },
     units: {
+      sea: "م",
       dust: "ميكروغرام/م³",
       temp: "°م",
       rain: "ملم / 3 ساعات",
@@ -435,6 +451,7 @@ export const coreNs: CoreMessages = {
       cloud: "%",
     },
     readout: {
+      sea: "موج {v} م",
       dust: "غبار {v} ميكروغرام/م³",
       temp: "{v}°",
       rain: "{v} ملم",
