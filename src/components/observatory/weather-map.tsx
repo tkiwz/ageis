@@ -12,6 +12,7 @@ import type { Wilayat } from "@/lib/observatory/place";
 import type { RainTrack } from "./rain-tracks";
 import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import type { FormingCell } from "@/lib/observatory/nowcast";
+import { cycloneHtml, shieldPx, type Cat } from "./cyclone-render";
 import type { StationReading } from "@/lib/observatory/stations";
 import type { Quake } from "@/lib/observatory/quakes";
 import type { WadiRisk } from "@/lib/observatory/wadi-risk";
@@ -104,8 +105,6 @@ function cloudImage(sh: { w: number; h: number; temps: (number | null)[]; core: 
   return big.toDataURL("image/png");
 }
 
-/** A storm symbol (two curved arms) that turns slowly, like a cyclone. */
-const CYCLONE_SVG = `<svg class="obs-cyc" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="4" fill="#c8463d"/><path d="M17 5a12 12 0 0 1 11 7M17 29a12 12 0 0 1-11-7" stroke="#c8463d" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M28 12c-3-2-6-2-8 0M6 22c3 2 6 2 8 0" stroke="#c8463d" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
 
 /** Warning fills: soft, but distinct for colour-blind readers (lightness also changes). */
 export const LEVEL_COLOR: Record<Level, string> = { 0: "transparent", 1: "#e3c14f", 2: "#e08a3c", 3: "#c8463d" };
@@ -552,6 +551,7 @@ export function WeatherMap(props: Props) {
     if (!grp) return;
     grp.clearLayers();
     if (!cyclones) return;
+    const zoomNow = map.current?.getZoom() ?? 5;
     for (const c of cyclones.live) {
       if (c.cone) L.polygon(c.cone.map((r) => r.map(([x, y]) => [y, x] as [number, number])), { color: dark ? "#cbd5e1" : "#475569", weight: 1, dashArray: "4 4", fillOpacity: 0.08, interactive: false }).addTo(grp);
       for (const z of c.windZones) {
@@ -567,7 +567,10 @@ export function WeatherMap(props: Props) {
       });
       const nowPt = [...c.points].reverse().find((p) => !p.forecast) ?? c.points[0];
       if (nowPt) {
-        L.marker([nowPt.lat, nowPt.lon], { interactive: false, icon: L.divIcon({ className: "", iconSize: [34, 34], iconAnchor: [17, 17], html: CYCLONE_SVG }) }).addTo(grp);
+        // The storm itself, at its real size for this zoom
+        const cat = (c.track.some((s) => s.cat === "HU") ? "HU" : c.track.some((s) => s.cat === "TS") ? "TS" : "TD") as Cat;
+        const px = shieldPx(cat, nowPt.lat, zoomNow);
+        L.marker([nowPt.lat, nowPt.lon], { interactive: false, icon: L.divIcon({ className: "", iconSize: [px, px], iconAnchor: [px / 2, px / 2], html: cycloneHtml(cat, px) }) }).addTo(grp);
         L.marker([nowPt.lat, nowPt.lon], { interactive: false, icon: L.divIcon({ className: "", iconSize: [140, 18], iconAnchor: [-20, 9], html: `<span class="obs-cyc-n">${c.name}</span>` }) }).addTo(grp);
       }
     }
@@ -576,13 +579,19 @@ export function WeatherMap(props: Props) {
     if (h && h.track.length > 1) {
       const all = h.track.map(([x, y]) => [y, x] as [number, number]);
       L.polyline(all, { color: dark ? "#cbd5e1" : "#64748b", weight: 2, opacity: 0.35, dashArray: "3 5", interactive: false }).addTo(grp);
-      const upto = Math.max(1, Math.round(cyclones.progress * (h.track.length - 1)));
-      for (let k = 1; k <= upto; k++) {
-        L.polyline([all[k - 1], all[k]], { color: CAT_COLOR[h.track[k][2]] ?? CAT_COLOR.TS, weight: 4, opacity: 0.95, interactive: false }).addTo(grp);
+      // Head moves smoothly between the 6-hourly points; strength follows the track at that moment
+      const pos = cyclones.progress * (h.track.length - 1);
+      const k0 = Math.min(h.track.length - 2, Math.floor(pos)), fr = pos - k0;
+      for (let k = 1; k <= k0; k++) {
+        L.polyline([all[k - 1], all[k]], { color: CAT_COLOR[h.track[k][2]] ?? CAT_COLOR.TS, weight: 3, opacity: 0.9, interactive: false }).addTo(grp);
       }
-      L.marker(all[upto], { interactive: false, icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 15], html: CYCLONE_SVG }) }).addTo(grp);
+      const head: [number, number] = [all[k0][0] + (all[k0 + 1][0] - all[k0][0]) * fr, all[k0][1] + (all[k0 + 1][1] - all[k0][1]) * fr];
+      L.polyline([all[k0], head], { color: CAT_COLOR[h.track[k0 + 1][2]] ?? CAT_COLOR.TS, weight: 3, opacity: 0.9, interactive: false }).addTo(grp);
+      const cat = (["TD", "TS", "HU"].includes(h.track[fr < 0.5 ? k0 : k0 + 1][2]) ? h.track[fr < 0.5 ? k0 : k0 + 1][2] : "TS") as Cat;
+      const px = shieldPx(cat, head[0], zoomNow);
+      L.marker(head, { interactive: false, icon: L.divIcon({ className: "", iconSize: [px, px], iconAnchor: [px / 2, px / 2], html: cycloneHtml(cat, px) }) }).addTo(grp);
     }
-  }, [cyclones, dark]);
+  }, [cyclones, dark, zoomTick]);
 
   // ── Storms forming now: an amber pulsing ring where a cloud top is shooting up ──
   useEffect(() => {
