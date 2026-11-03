@@ -14,6 +14,7 @@ import type { ActiveCyclone } from "@/lib/observatory/cyclones";
 import type { FormingCell } from "@/lib/observatory/nowcast";
 import type { StationReading } from "@/lib/observatory/stations";
 import type { Quake } from "@/lib/observatory/quakes";
+import type { WadiRisk } from "@/lib/observatory/wadi-risk";
 import wilayatsJson from "@/lib/observatory/wilayats.json";
 import { frameOf, inGovernorate, landMask, pointWeather, renderFrame, sample, type Frame, type LayerId, type Polygons, type Symbol } from "./field";
 
@@ -162,6 +163,8 @@ interface Props {
   onView?: (box: { lat0: number; lon0: number; lat1: number; lon1: number }) => void;
   /** Base map: real terrain under the live Meteosat picture, or the calm grey map */
   base?: "live" | "calm";
+  /** Wadis at risk for the shown day, with their level and peak rain */
+  wadis?: { wadi: WadiRisk; level: Level; label: string }[] | null;
   /** Earthquakes to mark (last 30 days) */
   quakes?: Quake[] | null;
   /** Measured readings at airport stations */
@@ -185,7 +188,7 @@ const WORLD = L.latLngBounds([-85, -200], [85, 200]);
 
 
 export function WeatherMap(props: Props) {
-  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming, base = "live", stations, showSymbols = true, viewGrid, onView, quakes } = props;
+  const { grid, mode, layer, step, dark, isAr, levels, selectedIso, onSelectIso, formatValue, levelLabel, myPos, tracks, satellite, cyclones, forming, base = "live", stations, showSymbols = true, viewGrid, onView, quakes, wadis } = props;
   // Raster/readout/particles use the world grid when one is in view; warnings, symbols and rain paths stay on Oman's
   const rgrid = viewGrid ?? grid;
   const isView = !!viewGrid;
@@ -211,6 +214,7 @@ export function WeatherMap(props: Props) {
   const formLayer = useRef<L.LayerGroup | null>(null);
   const stationLayer = useRef<L.LayerGroup | null>(null);
   const quakeLayer = useRef<L.LayerGroup | null>(null);
+  const wadiLayer = useRef<L.LayerGroup | null>(null);
   const liveIr = useRef<L.TileLayer.WMS | null>(null);
   const globalIr = useRef<L.TileLayer[]>([]);
   const readout = useRef<HTMLDivElement>(null);
@@ -241,6 +245,7 @@ export function WeatherMap(props: Props) {
     formLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
     stationLayer.current = L.layerGroup([], { pane: "symbols" }).addTo(m);
     quakeLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
+    wadiLayer.current = L.layerGroup([], { pane: "tracks" }).addTo(m);
     m.on("zoomend", () => setZoomTick((z) => z + 1));
     m.getPane("labels")!.style.pointerEvents = "none";
 
@@ -309,7 +314,7 @@ export function WeatherMap(props: Props) {
       // Layers belong to this map instance; drop them so a remount (StrictMode, HMR) rebuilds cleanly
       particles.current?.destroy();
       m.remove();
-      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null; formLayer.current = null; stationLayer.current = null; liveIr.current = null; quakeLayer.current = null;
+      map.current = null; overlay.current = null; tiles.current = null; govLayer.current = null; me.current = null; symbols.current = null; trackLayer.current = null; satFrames.current = null; cycLayer.current = null; formLayer.current = null; stationLayer.current = null; liveIr.current = null; quakeLayer.current = null; wadiLayer.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -368,6 +373,32 @@ export function WeatherMap(props: Props) {
     liveIr.current?.setOpacity(off ? 0 : 0.9);
     globalIr.current.forEach((l) => l.setOpacity(off ? 0 : l instanceof L.TileLayer.WMS ? 0.9 : 0.55));
   }, [satellite, cyclones, base]);
+
+  // ── Wadis at risk: the real course coloured by level, warning marks on road crossings ──
+  useEffect(() => {
+    const grp = wadiLayer.current;
+    if (!grp) return;
+    grp.clearLayers();
+    if (mode !== "layers" || cyclones || !wadis) return;
+    for (const { wadi, level, label } of wadis) {
+      if (!level) continue;
+      const col = LEVEL_COLOR[level];
+      for (const line of wadi.lines) {
+        const ll = line.map(([x, y]) => [y, x] as [number, number]);
+        L.polyline(ll, { pane: "tracks", color: "#0b1320", weight: 6, opacity: 0.35, interactive: false }).addTo(grp);
+        L.polyline(ll, { pane: "tracks", color: col, weight: 3.5, opacity: 0.95, interactive: false }).addTo(grp);
+      }
+      if (level >= 2) {
+        for (const [lon, lat, ford] of wadi.crossings) {
+          L.marker([lat, lon], { pane: "tracks", interactive: false, icon: L.divIcon({ className: "", iconSize: [16, 16], iconAnchor: [8, 8],
+            html: `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1Z" fill="${col}" stroke="#fff" stroke-width="1.2"/><path d="M8 6v3.6M8 11.4v.6" stroke="#1f2937" stroke-width="1.6" stroke-linecap="round"/></svg>${ford ? "" : ""}` }) }).addTo(grp);
+        }
+      }
+      const at = wadi.peakAt[0];
+      L.marker([at[1], at[0]], { pane: "tracks", interactive: false, icon: L.divIcon({ className: "", iconSize: [170, 18], iconAnchor: [-8, 9],
+        html: `<span class="obs-cyc-t">${label}</span>` }) }).addTo(grp);
+    }
+  }, [wadis, mode, cyclones]);
 
   // ── Earthquakes: dot size grows with magnitude, red in the last 24 h ──
   useEffect(() => {

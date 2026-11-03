@@ -28,6 +28,7 @@ import type { Nowcast } from "@/lib/observatory/nowcast";
 import type { StationReading } from "@/lib/observatory/stations";
 import type { WaveGrid } from "@/lib/observatory/marine";
 import type { Quake } from "@/lib/observatory/quakes";
+import type { WadiRiskResult } from "@/lib/observatory/wadi-risk";
 import cycloneHistory from "@/lib/observatory/cyclone-history.json";
 import { CAT_COLOR_UI, type HistoricStorm } from "./cyclone-types";
 
@@ -83,7 +84,8 @@ export function Observatory() {
     viewBox ? `/api/observatory/view?bbox=${lo(viewBox.lat0)},${lo(viewBox.lon0)},${hi(viewBox.lat1)},${hi(viewBox.lon1)}` : "/api/observatory/view?bbox=0,0,0,0",
     { enabled: tab === "layers" && outsideOman, refreshMs: 30 * 60_000 },
   );
-  const [overlays, setOverlays] = useState({ stations: true, symbols: true, forming: true, quakes: true });
+  const [overlays, setOverlays] = useState({ stations: true, symbols: true, forming: true, quakes: true, wadis: true });
+  const wadiApi = useApi<WadiRiskResult>("/api/observatory/wadis", { enabled: overlays.wadis, refreshMs: 30 * 60_000 });
   const waves = useApi<WaveGrid>("/api/observatory/waves", { enabled: tab === "layers" && layer === "sea", refreshMs: 3 * 3600_000 });
   const quakes = useApi<{ quakes: Quake[] }>("/api/observatory/quakes", { enabled: tab === "layers" && overlays.quakes, refreshMs: 10 * 60_000 });
   const [eqOpen, setEqOpen] = useState(false);
@@ -314,6 +316,14 @@ export function Observatory() {
             base={base}
             viewGrid={layer === "sea" ? seaGrid : outsideOman && layer !== "sat" ? viewApi.data : null}
             quakes={overlays.quakes ? quakes.data?.quakes ?? null : null}
+            wadis={overlays.wadis && wadiApi.data ? (() => {
+              const d = wadiApi.data.days.indexOf(curDay);
+              if (d < 0) return null;
+              return wadiApi.data.wadis.map((wadi) => ({
+                wadi, level: wadi.levels[d],
+                label: `${isAr ? wadi.nameAr : wadi.name} · ${t("observatory.wadi.mm", { v: f.number(wadi.peakMm[d]) })}`,
+              }));
+            })() : null}
             onView={setViewBox}
             stations={overlays.stations ? stations.data?.stations ?? null : null}
             showSymbols={overlays.symbols}
@@ -467,6 +477,9 @@ export function Observatory() {
                 times={satTimes} frame={satFrame} onFrame={(k) => { setSatPlaying(false); setSatFrame(k); }}
                 playing={satPlaying} onTogglePlay={() => setSatPlaying((p) => !p)}
               />
+            )}
+            {overlays.wadis && wadiApi.data && wadiApi.data.wadis.length > 0 && (
+              <WadiCard data={wadiApi.data} day={curDay} />
             )}
             {layer === "rain" && (
               <RainTracksCard
@@ -634,6 +647,40 @@ function SatPanel({ product, onProduct, times, frame, onFrame, playing, onToggle
   );
 }
 
+/** Wadis that may flow on the shown day: level, peak rain along the course, road crossings to avoid. */
+function WadiCard({ data, day }: { data: WadiRiskResult; day: string }) {
+  const { t, isAr } = useI18n();
+  const f = useFormat();
+  const d = data.days.indexOf(day);
+  const list = d < 0 ? [] : data.wadis.filter((w) => w.levels[d] > 0).sort((a, b) => b.levels[d] - a.levels[d] || b.peakMm[d] - a.peakMm[d]);
+  return (
+    <div className={cn(PANEL, "pointer-events-auto w-full p-3")}>
+      <div className="mb-1 flex items-center gap-2 text-sm font-semibold"><Waves className="h-4 w-4 text-warning" />{t("observatory.wadi.title")}</div>
+      <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">{t("observatory.wadi.desc")}</p>
+      {list.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("observatory.wadi.none")}</p>
+      ) : (
+        <ul className="max-h-56 space-y-1.5 overflow-y-auto">
+          {list.slice(0, 12).map((w) => (
+            <li key={w.id} className="rounded-lg border border-border/50 p-2 text-xs">
+              <div className="flex items-center gap-1.5 font-semibold">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: LEVEL_COLOR[w.levels[d]] }} />
+                {isAr ? w.nameAr : w.name}
+                {w.gov && <span className="font-normal text-muted-foreground">· {isAr ? GOV_NAMES[w.gov]?.nameAr : GOV_NAMES[w.gov]?.name}</span>}
+                <span className="ms-auto rounded px-1.5 text-[10px]" style={{ background: `${LEVEL_COLOR[w.levels[d]]}33` }}>{t(`observatory.wadi.level.${w.levels[d]}` as MessageKey)}</span>
+              </div>
+              <div className="mt-0.5 text-muted-foreground">{t("observatory.wadi.mm", { v: f.number(w.peakMm[d]) })}</div>
+              {w.crossings.length > 0 && w.levels[d] >= 2 && (
+                <div className="mt-0.5 font-medium text-warning">{t("observatory.wadi.crossings", { n: f.number(w.crossings.length) })}</div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Plain-language list of rain cells: where they form, which way they go, until when. */
 function RainTracksCard({ grid, tracks, townName, onPick }: {
   grid: ForecastGrid; tracks: RainTrack[]; townName: (lat: number, lon: number) => string; onPick: (tr: RainTrack) => void;
@@ -765,8 +812,8 @@ const LAYER_ITEMS: { id: AnyLayer; icon: LucideIcon }[] = [...LAYERS, { id: "sat
 /** NCM-style side panel: background, one weather layer, and what else to draw. Folds away on phones. */
 function LayersPanel({ layer, onLayer, base, onBase, overlays, onOverlay, children }: {
   layer: AnyLayer; onLayer: (l: AnyLayer) => void; base: "live" | "calm"; onBase: (b: "live" | "calm") => void;
-  overlays: { stations: boolean; symbols: boolean; forming: boolean; quakes: boolean };
-  onOverlay: (k: "stations" | "symbols" | "forming" | "quakes", v: boolean) => void;
+  overlays: { stations: boolean; symbols: boolean; forming: boolean; quakes: boolean; wadis: boolean };
+  onOverlay: (k: "stations" | "symbols" | "forming" | "quakes" | "wadis", v: boolean) => void;
   children?: React.ReactNode;
 }) {
   const { t } = useI18n();
@@ -816,10 +863,10 @@ function LayersPanel({ layer, onLayer, base, onBase, overlays, onOverlay, childr
             </fieldset>
             <fieldset>
               <legend className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("observatory.panel.overlays")}</legend>
-              {(["stations", "symbols", "forming", "quakes"] as const).map((k) => (
+              {(["wadis", "stations", "symbols", "forming", "quakes"] as const).map((k) => (
                 <label key={k} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-accent">
                   <input type="checkbox" checked={overlays[k]} onChange={(e) => onOverlay(k, e.target.checked)} className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" />
-                  {k === "quakes" ? t("observatory.eq.overlay") : t(`observatory.panel.${k}`)}
+                  {k === "quakes" ? t("observatory.eq.overlay") : k === "wadis" ? t("observatory.wadi.overlay") : t(`observatory.panel.${k}`)}
                 </label>
               ))}
             </fieldset>

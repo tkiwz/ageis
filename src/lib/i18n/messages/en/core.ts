@@ -212,6 +212,19 @@ export const coreNs = {
     showLess: "Show fewer",
   },
   observatory: {
+    wadi: {
+      overlay: "Wadi flood risk",
+      title: "Wadis that may flow",
+      desc: "Forecast rain along each wadi's whole course. A wadi can flow under a clear sky when it rains up in the mountains.",
+      none: "No wadi flow expected on this day.",
+      mm: "up to {v} mm along it",
+      crossings: "{n} road crossings — don't cross when it flows",
+      level: {
+        "1": "Watch",
+        "2": "Likely to flow",
+        "3": "Dangerous",
+      },
+    },
     eq: {
       overlay: "Earthquakes",
       chip: "{n} earthquakes this week",
